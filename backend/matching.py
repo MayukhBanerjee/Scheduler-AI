@@ -178,9 +178,7 @@ def rank_results(
             continue
 
         slots = filtered_availability.get(pid, [])
-        if not slots and intent.get("date"):
-            # If date was specified but no slots → skip
-            continue
+        # Relaxed constraint: display matching providers even if they haven't set up specific slot hours yet (ideal for newly registered providers)
 
         score = 0.0
         # Provider name match

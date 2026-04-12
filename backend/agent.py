@@ -233,6 +233,23 @@ async def node_db_retriever(state: AgentState) -> AgentState:
     services = await find_services(service_query, limit=20)
     providers = await find_providers(provider_query, limit=30)
 
+    # Ensure all matched providers have at least one representational service
+    provider_ids_with_services = {str(s.get("provider_id", "")) for s in services}
+    for p in providers:
+        pid = str(p.get("_id", ""))
+        if pid not in provider_ids_with_services:
+            # Dynamically insert a fallback service representing this provider
+            services.append({
+                "_id": f"mock_{pid}",
+                "name": f"Appointment with {p.get('name', 'Provider')}",
+                "category": p.get("category", "General"),
+                "provider_id": pid,
+                "duration_minutes": 60,
+                "price": 0,
+                "description": f"General booking for {p.get('name', 'this provider')}.",
+                "tags": [p.get("category", "General").lower()],
+            })
+
     # Build availability map: provider_id → available slots
     filtered = filter_by_availability(providers, time_pref)
     availability_map = {str(p.get("_id", "")): slots for p, slots in filtered}
@@ -241,7 +258,7 @@ async def node_db_retriever(state: AgentState) -> AgentState:
     return {
         **state,
         "raw_services": services,
-        "raw_providers": available_providers,
+        "raw_providers": available_providers if available_providers else providers, 
         "availability_map": availability_map,
     }
 
