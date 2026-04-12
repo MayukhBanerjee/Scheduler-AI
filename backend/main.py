@@ -9,9 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
-from models import ChatRequest, ChatResponse, BookingEventRequest, BookingEventResponse
+from models import ChatRequest, ChatResponse
 from agent import run_booking_agent
-from calendar_tool import create_dual_calendar_event, get_upcoming_events
 from database import get_db, close_db
 
 load_dotenv()
@@ -80,59 +79,6 @@ async def chat(request: ChatRequest):
         )
     except Exception as e:
         print(f"[/chat] ERROR: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ─── Booking Calendar Event ───────────────────────────────────────────────────
-
-@app.post("/create-booking-event", response_model=BookingEventResponse, tags=["Calendar"])
-async def create_booking_event(request: BookingEventRequest):
-    """
-    Create Google Calendar events for both the user and service provider
-    when a booking is confirmed.
-    """
-    print(f"[/create-booking-event] booking_id={request.booking_id}")
-    try:
-        result = create_dual_calendar_event(
-            service_name=request.service_name,
-            date=request.date,
-            time=request.time,
-            duration_minutes=request.duration_minutes,
-            user_email=request.user_email,
-            user_name=request.user_name,
-            provider_email=request.provider_email,
-            booking_id=request.booking_id,
-        )
-
-        if result.get("error"):
-            return BookingEventResponse(
-                success=False,
-                error=result["error"],
-            )
-
-        return BookingEventResponse(
-            success=True,
-            user_event_id=result.get("user_event_id"),
-            user_event_link=result.get("user_event_link"),
-            provider_event_id=result.get("provider_event_id"),
-            provider_event_link=result.get("provider_event_link"),
-        )
-    except Exception as e:
-        print(f"[/create-booking-event] ERROR: {e}")
-        return BookingEventResponse(success=False, error=str(e))
-
-
-# ─── Calendar Events (Dashboard Sync) ────────────────────────────────────────
-
-@app.get("/calendar/events", tags=["Calendar"])
-async def get_calendar_events(day: str = None):
-    """
-    Fetch upcoming events from Google Calendar for dashboard sync.
-    """
-    try:
-        result = get_upcoming_events(day)
-        return result
-    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 

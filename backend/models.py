@@ -41,25 +41,6 @@ class ChatResponse(BaseModel):
     intent: Optional[Dict] = None
 
 
-class BookingEventRequest(BaseModel):
-    booking_id: str
-    service_name: str
-    date: str  # YYYY-MM-DD
-    time: str  # HH:MM
-    duration_minutes: int = 60
-    user_email: str
-    user_name: str
-    provider_email: str = ""
-
-
-class BookingEventResponse(BaseModel):
-    success: bool
-    user_event_id: Optional[str] = None
-    user_event_link: Optional[str] = None
-    provider_event_id: Optional[str] = None
-    provider_event_link: Optional[str] = None
-    error: Optional[str] = None
-
 
 # ─── Agent State ──────────────────────────────────────────────────────────────
 

@@ -483,7 +483,7 @@ export default function UserDashboard() {
               </CardHeader>
 
               <CardContent className="flex-1 flex flex-col p-0 min-h-0">
-                <ScrollArea className="flex-1 p-4">
+                <div className="flex-1 overflow-y-auto p-4 scroll-smooth">
                   <div className="space-y-4">
                     <AnimatePresence initial={false}>
                       {messages.map((message) => (
@@ -583,7 +583,7 @@ export default function UserDashboard() {
 
                     <div ref={messagesEndRef} />
                   </div>
-                </ScrollArea>
+                </div>
 
                 {/* Input Area */}
                 <div className="border-t p-4">

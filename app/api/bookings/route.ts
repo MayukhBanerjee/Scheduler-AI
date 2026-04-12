@@ -43,47 +43,9 @@ export async function POST(req: Request) {
     const result = await db.collection("bookings").insertOne(booking);
     const bookingId = result.insertedId.toString();
 
-    // Trigger Google Calendar event creation via Python backend
-    let calendarResult = null;
-    try {
-      const calRes = await fetch(`${BACKEND_URL}/create-booking-event`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          booking_id: bookingId,
-          service_name: service_name || "Service Booking",
-          date,
-          time,
-          duration_minutes: duration_minutes || 60,
-          user_email: session.email,
-          user_name: session.name,
-          provider_email: provider_email || "",
-        }),
-      });
-      if (calRes.ok) {
-        calendarResult = await calRes.json();
-        // Update booking with calendar event IDs
-        if (calendarResult?.user_event_id || calendarResult?.provider_event_id) {
-          await db.collection("bookings").updateOne(
-            { _id: result.insertedId },
-            {
-              $set: {
-                google_event_id_user: calendarResult.user_event_id || null,
-                google_event_id_provider: calendarResult.provider_event_id || null,
-              },
-            }
-          );
-        }
-      }
-    } catch (calErr) {
-      console.error("[bookings] Calendar sync failed (non-fatal):", calErr);
-    }
-
     return NextResponse.json({
       success: true,
       booking_id: bookingId,
-      calendar_synced: !!calendarResult,
-      calendar_link: calendarResult?.user_event_link || null,
     });
   } catch (error) {
     console.error("[bookings POST] error:", error);
