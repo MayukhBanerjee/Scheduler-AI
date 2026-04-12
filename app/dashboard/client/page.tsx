@@ -9,6 +9,9 @@ import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Calendar,
   Users,
@@ -54,11 +57,23 @@ interface CalendarDay {
   isCurrentMonth: boolean
 }
 
+interface NestedService {
+  name: string
+  price: number
+  duration_minutes: number
+  description: string
+  tags: string[]
+}
+
 interface UserProfile {
   name: string
   email: string
   role: string
   userId: string
+  category?: string
+  location?: string
+  description?: string
+  services?: NestedService[]
 }
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
@@ -99,15 +114,32 @@ export default function ClientDashboard() {
   const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([])
 
   // Fetch user profile
-  useEffect(() => {
-    fetch("/api/auth/me")
+  const [isSavingProfile, setIsSavingProfile] = useState(false)
+  const [profileForm, setProfileForm] = useState<UserProfile | null>(null)
+
+  // Fetch user profile natively
+  const fetchProfile = useCallback(() => {
+    fetch("/api/provider/profile")
       .then((res) => res.json())
       .then((data) => {
-        if (data.user) setUser(data.user)
+        if (data.provider) {
+            setUser({
+                ...data.provider,
+                userId: data.provider._id
+            })
+            setProfileForm({
+                ...data.provider,
+                services: data.provider.services || []
+            })
+        }
         else router.push("/login")
       })
       .catch(() => router.push("/login"))
   }, [router])
+
+  useEffect(() => {
+    fetchProfile()
+  }, [fetchProfile])
 
   // Fetch bookings
   const fetchBookings = useCallback(async () => {
@@ -180,6 +212,52 @@ export default function ClientDashboard() {
     router.refresh()
   }
 
+  const handleSaveProfile = async () => {
+    if (!profileForm) return
+    setIsSavingProfile(true)
+    try {
+        const res = await fetch("/api/provider/profile", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(profileForm)
+        })
+        if (res.ok) {
+            fetchProfile() // Refresh local state smoothly
+        }
+    } catch (err) {
+        console.error(err)
+    } finally {
+        setIsSavingProfile(false)
+    }
+  }
+
+  const handleAddService = () => {
+      if (!profileForm) return
+      const updated = [...(profileForm.services || [])]
+      updated.push({
+          name: "New Service",
+          price: 0,
+          duration_minutes: 60,
+          description: "",
+          tags: []
+      })
+      setProfileForm({ ...profileForm, services: updated })
+  }
+
+  const handleRemoveService = (index: number) => {
+      if (!profileForm) return
+      const updated = [...(profileForm.services || [])]
+      updated.splice(index, 1)
+      setProfileForm({ ...profileForm, services: updated })
+  }
+
+  const handleUpdateService = (index: number, field: keyof NestedService, value: any) => {
+      if (!profileForm) return
+      const updated = [...(profileForm.services || [])]
+      updated[index] = { ...updated[index], [field]: value }
+      setProfileForm({ ...profileForm, services: updated })
+  }
+
   // ─── Render ─────────────────────────────────────────────────────────────
 
   return (
@@ -250,8 +328,17 @@ export default function ClientDashboard() {
           ))}
         </motion.div>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Calendar */}
+        <Tabs defaultValue="calendar" className="w-full">
+          <div className="flex justify-between items-center mb-6">
+            <TabsList className="grid w-[400px] grid-cols-2">
+              <TabsTrigger value="calendar">Schedule & Bookings</TabsTrigger>
+              <TabsTrigger value="profile">Business Profile</TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="calendar" className="mt-0">
+            <div className="grid lg:grid-cols-3 gap-6">
+              {/* Calendar */}
           <motion.div
             initial={{ x: -30, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
@@ -460,6 +547,114 @@ export default function ClientDashboard() {
             </Card>
           </motion.div>
         </div>
+      </TabsContent>
+
+      <TabsContent value="profile" className="mt-0 space-y-6">
+        <div className="grid lg:grid-cols-3 gap-6">
+           <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="lg:col-span-1 space-y-6">
+              <Card>
+                  <CardHeader>
+                      <CardTitle>Business Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                      {profileForm && (
+                          <>
+                              <div className="space-y-2">
+                                  <label className="text-sm font-medium">Business Name</label>
+                                  <Input value={profileForm.name} onChange={e => setProfileForm({...profileForm, name: e.target.value})} />
+                              </div>
+                              <div className="space-y-2">
+                                  <label className="text-sm font-medium">Category</label>
+                                  <Select 
+                                    value={profileForm.category || "General"} 
+                                    onValueChange={v => setProfileForm({...profileForm, category: v})}
+                                  >
+                                      <SelectTrigger><SelectValue /></SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="Beauty & Hair">Beauty & Hair</SelectItem>
+                                        <SelectItem value="Fitness">Fitness</SelectItem>
+                                        <SelectItem value="Healthcare">Healthcare</SelectItem>
+                                        <SelectItem value="Wellness & Spa">Wellness & Spa</SelectItem>
+                                        <SelectItem value="Home Services">Home Services</SelectItem>
+                                        <SelectItem value="Dental">Dental</SelectItem>
+                                        <SelectItem value="Legal">Legal</SelectItem>
+                                        <SelectItem value="Consulting">Consulting</SelectItem>
+                                        <SelectItem value="Education">Education</SelectItem>
+                                        <SelectItem value="General">General</SelectItem>
+                                      </SelectContent>
+                                  </Select>
+                              </div>
+                              <div className="space-y-2">
+                                  <label className="text-sm font-medium">Location</label>
+                                  <Input value={profileForm.location || ""} onChange={e => setProfileForm({...profileForm, location: e.target.value})} />
+                              </div>
+                          </>
+                      )}
+                  </CardContent>
+              </Card>
+           </motion.div>
+
+           <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.1 }} className="lg:col-span-2 space-y-6">
+              <Card>
+                  <CardHeader className="flex flex-row justify-between items-center">
+                      <CardTitle>Services Configuration</CardTitle>
+                      <Button variant="outline" size="sm" onClick={handleAddService}>+ Add Service</Button>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                      <ScrollArea className="h-[400px] pr-4">
+                          <div className="space-y-4">
+                            {profileForm?.services?.length === 0 && (
+                                <div className="text-center py-8 text-muted-foreground border border-dashed rounded-xl">
+                                    <p>No specific services added.</p>
+                                    <p className="text-xs">The AI will default to booking general appointments.</p>
+                                </div>
+                            )}
+                            {profileForm?.services?.map((svc, idx) => (
+                                <div key={idx} className="p-4 border rounded-xl relative space-y-3 bg-muted/10">
+                                    <Button 
+                                        variant="ghost" size="icon" 
+                                        className="absolute top-2 right-2 h-6 w-6 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-950"
+                                        onClick={() => handleRemoveService(idx)}
+                                    >
+                                        ×
+                                    </Button>
+                                    <div className="grid grid-cols-2 gap-4 mr-8">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-muted-foreground">Service Name</label>
+                                            <Input value={svc.name} onChange={e => handleUpdateService(idx, "name", e.target.value)} className="h-8 text-sm" />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold text-muted-foreground">Price (₹)</label>
+                                                <Input type="number" value={svc.price || 0} onChange={e => handleUpdateService(idx, "price", parseInt(e.target.value))} className="h-8 text-sm" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-semibold text-muted-foreground">Duration (mins)</label>
+                                                <Input type="number" value={svc.duration_minutes || 60} onChange={e => handleUpdateService(idx, "duration_minutes", parseInt(e.target.value))} className="h-8 text-sm" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-semibold text-muted-foreground">Description</label>
+                                        <Textarea rows={2} value={svc.description || ""} onChange={e => handleUpdateService(idx, "description", e.target.value)} className="text-sm resize-none" />
+                                    </div>
+                                </div>
+                            ))}
+                          </div>
+                      </ScrollArea>
+                  </CardContent>
+              </Card>
+
+              <div className="flex justify-end pt-2">
+                  <Button onClick={handleSaveProfile} disabled={isSavingProfile} className="w-40">
+                      {isSavingProfile ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                      {isSavingProfile ? "Saving..." : "Save State"}
+                  </Button>
+              </div>
+           </motion.div>
+        </div>
+      </TabsContent>
+      </Tabs>
       </div>
 
       {/* Booking Detail Modal */}

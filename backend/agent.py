@@ -182,23 +182,26 @@ def node_query_builder(state: AgentState) -> AgentState:
     intent = state.get("intent") or {}
     filters = goal.get("filters", {})
 
-    # Service query
-    service_query: Dict[str, Any] = {}
-    if goal.get("category") and goal["category"] != "General":
-        service_query["category"] = goal["category"]
-
-    # Text search using tags + name (regex for flexibility)
-    service_type = intent.get("service_type") or intent.get("specific_service")
-    if service_type:
-        service_query["$or"] = [
-            {"tags": {"$regex": service_type, "$options": "i"}},
-            {"name": {"$regex": service_type, "$options": "i"}},
-        ]
-
-    # Provider query
+    # Provider query using $elemMatch for embedded services
     provider_query: Dict[str, Any] = {}
+    
     if goal.get("category") and goal["category"] != "General":
         provider_query["category"] = goal["category"]
+
+    service_type = intent.get("service_type") or intent.get("specific_service")
+    if service_type:
+        provider_query["$or"] = [
+            {"services": {
+                "$elemMatch": {
+                    "$or": [
+                        {"tags": {"$regex": service_type, "$options": "i"}},
+                        {"name": {"$regex": service_type, "$options": "i"}},
+                    ]
+                }
+            }},
+            {"category": {"$regex": service_type, "$options": "i"}},
+            {"name": {"$regex": service_type, "$options": "i"}}
+        ]
 
     if filters.get("location"):
         provider_query["location"] = {"$regex": filters["location"], "$options": "i"}
@@ -207,7 +210,6 @@ def node_query_builder(state: AgentState) -> AgentState:
         provider_query["name"] = {"$regex": filters["provider_name"], "$options": "i"}
 
     mongo_query = {
-        "service_query": service_query,
         "provider_query": provider_query,
     }
 
@@ -221,34 +223,48 @@ async def node_db_retriever(state: AgentState) -> AgentState:
     if state.get("needs_clarification"):
         return state
 
-    from database import find_services, find_providers
+    from database import find_providers
 
     query = state.get("mongo_query") or {}
-    service_query = query.get("service_query", {})
     provider_query = query.get("provider_query", {})
 
     goal = state.get("goal_frame") or {}
     time_pref = goal.get("time_preference")
 
-    services = await find_services(service_query, limit=20)
     providers = await find_providers(provider_query, limit=30)
-
-    # Ensure all matched providers have at least one representational service
-    provider_ids_with_services = {str(s.get("provider_id", "")) for s in services}
+    
+    # Extract embedded services from fetched providers
+    services = []
+    
     for p in providers:
         pid = str(p.get("_id", ""))
-        if pid not in provider_ids_with_services:
+        p_category = p.get("category", "General")
+        embedded_services = p.get("services", [])
+        
+        if not embedded_services:
             # Dynamically insert a fallback service representing this provider
             services.append({
                 "_id": f"mock_{pid}",
                 "name": f"Appointment with {p.get('name', 'Provider')}",
-                "category": p.get("category", "General"),
+                "category": p_category,
                 "provider_id": pid,
                 "duration_minutes": 60,
                 "price": 0,
                 "description": f"General booking for {p.get('name', 'this provider')}.",
-                "tags": [p.get("category", "General").lower()],
+                "tags": [p_category.lower()],
             })
+        else:
+            for i, es in enumerate(embedded_services):
+                services.append({
+                    "_id": f"embedded_{pid}_{i}",
+                    "name": es.get("name", "Service"),
+                    "category": p_category,
+                    "provider_id": pid,
+                    "duration_minutes": es.get("duration_minutes", 60),
+                    "price": es.get("price", 0),
+                    "description": es.get("description", ""),
+                    "tags": es.get("tags", []),
+                })
 
     # Build availability map: provider_id → available slots
     filtered = filter_by_availability(providers, time_pref)

@@ -28,8 +28,8 @@ export async function POST(req: Request) {
     const booking = {
       user_id: new ObjectId(session.userId),
       user_email: session.email,
-      service_id: new ObjectId(service_id),
-      provider_id: new ObjectId(provider_id),
+      service_id: ObjectId.isValid(service_id) ? new ObjectId(service_id) : service_id,
+      provider_id: ObjectId.isValid(provider_id) ? new ObjectId(provider_id) : provider_id,
       service_name: service_name || "Service",
       date,
       time,
