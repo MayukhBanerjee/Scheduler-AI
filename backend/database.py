@@ -4,6 +4,7 @@ Async MongoDB connection and CRUD helpers using motor
 """
 
 import os
+import re
 from typing import Optional, List, Dict, Any
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from bson import ObjectId
@@ -51,6 +52,57 @@ async def find_services(query: Dict[str, Any], limit: int = 20) -> List[Dict]:
 async def find_providers(query: Dict[str, Any], limit: int = 20) -> List[Dict]:
     db = await get_db()
     cursor = db["service_providers"].find(query).limit(limit)
+    results = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        results.append(doc)
+    return results
+
+
+async def find_providers_by_tags(
+    tags: List[str],
+    category: Optional[str] = None,
+    location_lower: Optional[str] = None,
+    provider_name: Optional[str] = None,
+    limit: int = 30,
+) -> List[Dict]:
+    """
+    Primary agent retrieval path — uses the denormalized `search_tags` index.
+
+    Query uses `$in` on a flat array field, which MongoDB resolves with a
+    multikey B-tree index scan (O log n) rather than a collection scan.
+    No regex, no $elemMatch, no token cost.
+
+    Priority logic:
+      1. `search_tags $in [tags]` — main semantic match (index-covered)
+      2. `category` — optional secondary equality filter (compound index)
+      3. `location_lower` — optional prefix-regex on pre-lowercased field
+      4. `name` — optional provider name filter (case-insensitive regex)
+    """
+    db = await get_db()
+
+    query: Dict[str, Any] = {}
+
+    if tags:
+        query["search_tags"] = {"$in": tags}
+
+    if category and category != "General":
+        query["category"] = category
+
+    if location_lower:
+        # Prefix match on pre-lowercased field — avoids $options:"i" overhead
+        query["location_lower"] = {"$regex": f"^{re.escape(location_lower)}"}
+
+    if provider_name:
+        query["name"] = {"$regex": provider_name, "$options": "i"}
+
+    cursor = (
+        db["service_providers"]
+        .find(query)
+        .sort("rating", -1)  # Best-rated providers first
+        .limit(limit)
+    )
+
     results = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])

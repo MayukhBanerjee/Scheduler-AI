@@ -4,7 +4,7 @@ Service matching engine — filters and ranks services based on user intent
 """
 
 import re
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Set, Tuple
 from datetime import datetime, date
 
 
@@ -81,6 +81,41 @@ def infer_category(service_type: Optional[str], specific_service: Optional[str])
     return best_match if best_score > 0 else None
 
 
+def extract_search_tags(service_type: Optional[str], specific_service: Optional[str]) -> List[str]:
+    """
+    Expand user intent into a full flat list of searchable tags.
+
+    Strategy:
+    1. Include the raw query words themselves.
+    2. Find the best-matching category in CATEGORY_MAP.
+    3. Include ALL keywords from that category — this ensures broad but
+       category-correct coverage without any LLM call.
+
+    Example: service_type="massage" →
+      matches "Wellness & Spa" → returns all 11 wellness keywords
+      + the raw word "massage"
+    """
+    text = " ".join(filter(None, [service_type, specific_service])).lower().strip()
+    if not text:
+        return []
+
+    tags: Set[str] = set()
+
+    # Include meaningful raw words from the query (skip filler words < 3 chars)
+    for word in re.split(r"\s+", text):
+        if len(word) >= 3:
+            tags.add(word)
+
+    # Find ALL matching categories and include their full keyword sets
+    # (a query like "massage therapy" may hit both Wellness & Spa and Healthcare)
+    for category, keywords in CATEGORY_MAP.items():
+        score = sum(1 for kw in keywords if kw in text)
+        if score > 0:
+            tags.update(kw.lower() for kw in keywords)
+
+    return sorted(tags)
+
+
 def parse_time_preference(time_str: Optional[str]) -> Optional[Tuple[str, str]]:
     """Convert natural language time to (start, end) tuple."""
     if not time_str:
@@ -120,22 +155,34 @@ def get_day_key(time_str: Optional[str]) -> Optional[str]:
 def filter_by_availability(
     providers: List[Dict],
     time_str: Optional[str],
+    date_str: Optional[str] = None,
 ) -> List[Tuple[Dict, List[str]]]:
     """
     Returns list of (provider, matching_slots) pairs.
     Each provider has an `availability` dict keyed by day name.
     """
     time_bounds = parse_time_preference(time_str)
-    day_key = get_day_key(time_str)
+    
+    day_key = get_day_key(time_str) or get_day_key(date_str)
+    
+    if date_str and re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+        try:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            days_of_week = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            day_key = days_of_week[dt.weekday()]
+        except ValueError:
+            pass
 
     result = []
     for provider in providers:
         availability: Dict[str, List[str]] = provider.get("availability", {})
 
-        if day_key and day_key in availability:
+        if date_str and date_str in availability:
+            slots = availability[date_str]
+        elif day_key and day_key in availability:
             slots = availability[day_key]
-        elif day_key:
-            # day requested but no slots for that day
+        elif day_key or date_str:
+            # day requested but no slots for that day/date
             continue
         else:
             # No day preference — collect all slots
@@ -208,6 +255,7 @@ def rank_results(
             "rating": p.get("rating", 4.0),
             "description": s.get("description", ""),
             "tags": s.get("tags", []),
+            "date": intent.get("date"),
         }
         for score, s, p, slots in scored[:5]  # Top 5 results
     ]

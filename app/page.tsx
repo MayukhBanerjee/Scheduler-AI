@@ -5,7 +5,7 @@ import { motion, useScroll, useTransform } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, MessageSquare, Phone, Clock, Users, Zap, ArrowRight, Bot, Sparkles } from "lucide-react"
+import { Calendar, MessageSquare, Phone, Clock, Users, Zap, ArrowRight, Bot, Sparkles, Github, Linkedin, Mail } from "lucide-react"
 import Link from "next/link"
 import { ScrollReveal } from "@/components/scroll-reveal"
 import { AnimatedCounter } from "@/components/animated-counter"
@@ -109,11 +109,11 @@ export default function LandingPage() {
           </ScrollReveal>
 
           <ScrollReveal delay={0.8}>
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex justify-center">
               <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                 <Button
                   size="lg"
-                  className="text-lg px-8 py-6 relative overflow-hidden"
+                  className="text-lg px-8 py-6 relative overflow-hidden shadow-lg shadow-primary/20"
                   onMouseEnter={() => setIsHovered(true)}
                   onMouseLeave={() => setIsHovered(false)}
                   onClick={() => openModal("register")}
@@ -124,7 +124,7 @@ export default function LandingPage() {
                     animate={{ x: isHovered ? "0%" : "-100%" }}
                     transition={{ duration: 0.3 }}
                   />
-                  <span className="relative z-10">Get Started Free</span>
+                  <span className="relative z-10 font-medium">Get Started Free</span>
                   <motion.div
                     animate={{ x: isHovered ? 5 : 0 }}
                     transition={{ duration: 0.2 }}
@@ -132,11 +132,6 @@ export default function LandingPage() {
                   >
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </motion.div>
-                </Button>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button variant="outline" size="lg" className="text-lg px-8 py-6 bg-transparent">
-                  Watch Demo
                 </Button>
               </motion.div>
             </div>
@@ -192,6 +187,11 @@ export default function LandingPage() {
                 transition={{ duration: 0.3 }}
               >
                 <Card className="h-full hover:shadow-lg transition-shadow duration-300 relative overflow-hidden">
+                  {feature.inProgress && (
+                    <Badge className="absolute top-4 right-4 bg-green-500 hover:bg-green-600 text-white z-20 shadow-sm border-0 font-medium rounded-full px-3 py-0.5 pointer-events-none">
+                      In progress
+                    </Badge>
+                  )}
                   <motion.div
                     className="absolute inset-0 bg-gradient-to-br from-primary/5 to-accent/5 opacity-0"
                     whileHover={{ opacity: 1 }}
@@ -334,9 +334,58 @@ export default function LandingPage() {
       </section>
 
       <footer className="border-t bg-muted/30">
-        <div className="container px-4 py-12 mx-auto">
+        <div className="container px-4 py-8 mx-auto space-y-8">
           <ScrollReveal>
-            <div className="flex flex-col md:flex-row justify-between items-center">
+            <div className="text-center space-y-6">
+              <h3 className="text-xl font-bold">Meet our developers</h3>
+              <div className="flex justify-center gap-10 md:gap-24">
+                <motion.div className="flex flex-col items-center space-y-3" whileHover={{ scale: 1.05 }}>
+                  <div className="h-20 w-20 rounded-full bg-muted overflow-hidden border-2 border-primary/20 flex items-center justify-center shadow-sm">
+                    <img src="/mayukh.jpg" alt="Mayukh Banerjee" className="object-cover w-full h-full" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden') }} />
+                    <Users className="h-8 w-8 text-muted-foreground/50 hidden" />
+                  </div>
+                  <div className="flex flex-col items-center space-y-2">
+                    <span className="font-semibold hover:text-primary transition-colors cursor-default">Mayukh Banerjee</span>
+                    <div className="flex space-x-6 text-muted-foreground">
+                      <a href="https://github.com/MayukhBanerjee" target="_blank" rel="noreferrer" className="hover:text-primary transition-all hover:scale-110">
+                        <Github className="h-4 w-4" />
+                      </a>
+                      <a href="https://www.linkedin.com/in/mayukh-banerjee" target="_blank" rel="noreferrer" className="hover:text-primary transition-all hover:scale-110">
+                        <Linkedin className="h-4 w-4" />
+                      </a>
+                    </div>
+                    <a href="mailto:mayukhbanerjee011@gmail.com" className="text-xs text-muted-foreground hover:text-primary transition-colors mt-1 font-medium">
+                      mayukhbanerjee011@gmail.com
+                    </a>
+                  </div>
+                </motion.div>
+
+                <motion.div className="flex flex-col items-center space-y-3" whileHover={{ scale: 1.05 }}>
+                  <div className="h-20 w-20 rounded-full bg-muted overflow-hidden border-2 border-primary/20 flex items-center justify-center shadow-sm">
+                    <img src="/naif.jpg" alt="Naif Naqeeb" className="object-cover w-full h-full" onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextElementSibling?.classList.remove('hidden') }} />
+                    <Users className="h-8 w-8 text-muted-foreground/50 hidden" />
+                  </div>
+                  <div className="flex flex-col items-center space-y-2">
+                    <span className="font-semibold hover:text-primary transition-colors cursor-default">Naif Naqeeb</span>
+                    <div className="flex space-x-6 text-muted-foreground">
+                      <a href="https://github.com/naifnaqeeb" target="_blank" rel="noreferrer" className="hover:text-primary transition-all hover:scale-110">
+                        <Github className="h-4 w-4" />
+                      </a>
+                      <a href="https://www.linkedin.com/in/naifnaqeeb/" target="_blank" rel="noreferrer" className="hover:text-primary transition-all hover:scale-110">
+                        <Linkedin className="h-4 w-4" />
+                      </a>
+                    </div>
+                    <a href="mailto:naifnaqeeb.123@gmail.com" className="text-xs text-muted-foreground hover:text-primary transition-colors mt-1 font-medium">
+                      naifnaqeeb.123@gmail.com
+                    </a>
+                  </div>
+                </motion.div>
+              </div>
+            </div>
+          </ScrollReveal>
+
+          <ScrollReveal>
+            <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-border/50">
               <motion.div className="flex items-center space-x-2 mb-4 md:mb-0" whileHover={{ scale: 1.05 }}>
                 <motion.div
                   className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary"
@@ -374,11 +423,13 @@ const features = [
     icon: Phone,
     title: "Voice Booking",
     description: "Call and speak naturally to book appointments. Our AI understands speech and responds in real-time.",
+    inProgress: true,
   },
   {
     icon: Calendar,
     title: "Smart Calendar Sync",
     description: "Seamless integration with Google Calendar for both clients and users with real-time synchronization.",
+    inProgress: true,
   },
   {
     icon: Clock,

@@ -22,6 +22,7 @@ from langgraph.graph import StateGraph, END
 
 from matching import (
     infer_category,
+    extract_search_tags,
     filter_by_availability,
     rank_results,
 )
@@ -174,43 +175,30 @@ def node_goal_framer(state: AgentState) -> AgentState:
 # ─── Node 3: MongoDB Query Builder ───────────────────────────────────────────
 
 def node_query_builder(state: AgentState) -> AgentState:
-    """Node 3: Build MongoDB query from goal frame."""
+    """Node 3: Build an efficient indexed query from the goal frame.
+
+    Uses extract_search_tags() to expand the user's intent into a full list
+    of normalized lowercase tags, then builds { search_tags: { $in: [...] } }.
+    This is fully index-covered — no $elemMatch, no regex, no collection scan.
+    """
     if state.get("needs_clarification"):
         return state
 
-    goal = state.get("goal_frame") or {}
-    intent = state.get("intent") or {}
+    goal    = state.get("goal_frame") or {}
+    intent  = state.get("intent") or {}
     filters = goal.get("filters", {})
 
-    # Provider query using $elemMatch for embedded services
-    provider_query: Dict[str, Any] = {}
-    
-    if goal.get("category") and goal["category"] != "General":
-        provider_query["category"] = goal["category"]
+    # Expand intent into a full tag list (pure Python, zero LLM cost)
+    tags = extract_search_tags(
+        intent.get("service_type"),
+        intent.get("specific_service"),
+    )
 
-    service_type = intent.get("service_type") or intent.get("specific_service")
-    if service_type:
-        provider_query["$or"] = [
-            {"services": {
-                "$elemMatch": {
-                    "$or": [
-                        {"tags": {"$regex": service_type, "$options": "i"}},
-                        {"name": {"$regex": service_type, "$options": "i"}},
-                    ]
-                }
-            }},
-            {"category": {"$regex": service_type, "$options": "i"}},
-            {"name": {"$regex": service_type, "$options": "i"}}
-        ]
-
-    if filters.get("location"):
-        provider_query["location"] = {"$regex": filters["location"], "$options": "i"}
-
-    if filters.get("provider_name"):
-        provider_query["name"] = {"$regex": filters["provider_name"], "$options": "i"}
-
-    mongo_query = {
-        "provider_query": provider_query,
+    mongo_query: Dict[str, Any] = {
+        "tags":           tags,
+        "category":       goal.get("category"),          # None if "General"
+        "location_lower": filters["location"].lower() if filters.get("location") else None,
+        "provider_name":  filters.get("provider_name"),
     }
 
     return {**state, "mongo_query": mongo_query}
@@ -219,62 +207,63 @@ def node_query_builder(state: AgentState) -> AgentState:
 # ─── Node 4: DB Retriever ────────────────────────────────────────────────────
 
 async def node_db_retriever(state: AgentState) -> AgentState:
-    """Node 4: Fetch matching services and providers from MongoDB."""
+    """Node 4: Fetch matching providers using the indexed search_tags query.
+
+    Uses find_providers_by_tags() which issues { search_tags: { $in: [...] } }
+    — fully index-covered, no collection scan, no regex.
+    Providers with no services configured are skipped (not injected as mocks).
+    """
     if state.get("needs_clarification"):
         return state
 
-    from database import find_providers
+    from database import find_providers_by_tags
 
-    query = state.get("mongo_query") or {}
-    provider_query = query.get("provider_query", {})
-
-    goal = state.get("goal_frame") or {}
+    query     = state.get("mongo_query") or {}
+    goal      = state.get("goal_frame") or {}
     time_pref = goal.get("time_preference")
 
-    providers = await find_providers(provider_query, limit=30)
-    
-    # Extract embedded services from fetched providers
-    services = []
-    
-    for p in providers:
-        pid = str(p.get("_id", ""))
-        p_category = p.get("category", "General")
-        embedded_services = p.get("services", [])
-        
-        if not embedded_services:
-            # Dynamically insert a fallback service representing this provider
-            services.append({
-                "_id": f"mock_{pid}",
-                "name": f"Appointment with {p.get('name', 'Provider')}",
-                "category": p_category,
-                "provider_id": pid,
-                "duration_minutes": 60,
-                "price": 0,
-                "description": f"General booking for {p.get('name', 'this provider')}.",
-                "tags": [p_category.lower()],
-            })
-        else:
-            for i, es in enumerate(embedded_services):
-                services.append({
-                    "_id": f"embedded_{pid}_{i}",
-                    "name": es.get("name", "Service"),
-                    "category": p_category,
-                    "provider_id": pid,
-                    "duration_minutes": es.get("duration_minutes", 60),
-                    "price": es.get("price", 0),
-                    "description": es.get("description", ""),
-                    "tags": es.get("tags", []),
-                })
+    providers = await find_providers_by_tags(
+        tags           = query.get("tags", []),
+        category       = query.get("category"),
+        location_lower = query.get("location_lower"),
+        provider_name  = query.get("provider_name"),
+        limit          = 30,
+    )
 
-    # Build availability map: provider_id → available slots
-    filtered = filter_by_availability(providers, time_pref)
-    availability_map = {str(p.get("_id", "")): slots for p, slots in filtered}
+    # Flatten embedded services into a uniform list for the ranking engine.
+    # Providers with no services configured are skipped — not ready to be booked.
+    services = []
+    for p in providers:
+        pid               = str(p.get("_id", ""))
+        p_category        = p.get("category", "General")
+        embedded_services = p.get("services", [])
+
+        if not embedded_services:
+            continue  # Skip providers who haven't configured services yet
+
+        for i, es in enumerate(embedded_services):
+            services.append({
+                "_id":              f"embedded_{pid}_{i}",
+                "name":             es.get("name", "Service"),
+                "category":         p_category,
+                "provider_id":      pid,
+                "duration_minutes": es.get("duration_minutes", 60),
+                "price":            es.get("price", 0),
+                "description":      es.get("description", ""),
+                "tags":             es.get("tags", []),
+            })
+
+    # Build availability map and filter by time preference
+    intent = state.get("intent") or {}
+    date_str = intent.get("date")
+    filtered            = filter_by_availability(providers, time_pref, date_str)
+    availability_map    = {str(p.get("_id", "")): slots for p, slots in filtered}
     available_providers = [p for p, _ in filtered]
 
     return {
         **state,
-        "raw_services": services,
-        "raw_providers": available_providers if available_providers else providers, 
+        "raw_services":     services,
+        "raw_providers":    available_providers if available_providers else providers,
         "availability_map": availability_map,
     }
 
