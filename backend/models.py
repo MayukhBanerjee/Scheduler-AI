@@ -31,6 +31,7 @@ class ServiceResult(BaseModel):
     rating: float
     description: str
     tags: List[str]
+    date: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

@@ -55,6 +55,8 @@ interface CalendarDay {
   bookings: Booking[]
   isToday: boolean
   isCurrentMonth: boolean
+  availableSlots: string[]
+  isOverride: boolean
 }
 
 interface NestedService {
@@ -74,6 +76,7 @@ interface UserProfile {
   location?: string
   description?: string
   services?: NestedService[]
+  availability?: Record<string, string[]>
 }
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
@@ -111,6 +114,8 @@ export default function ClientDashboard() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedView, setSelectedView] = useState<"day" | "week" | "month">("week")
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [selectedDayOverride, setSelectedDayOverride] = useState<CalendarDay | null>(null)
+  const [overrideInputTime, setOverrideInputTime] = useState("")
   const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([])
 
   // Fetch user profile
@@ -175,6 +180,19 @@ export default function ClientDashboard() {
       const dateStr = date.toISOString().split("T")[0]
 
       const dayBookings = bookings.filter((b) => b.date === dateStr)
+      const dayName = date.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase()
+
+      let availableSlots: string[] = []
+      let isOverride = false
+
+      if (profileForm?.availability) {
+          if (profileForm.availability[dateStr]) {
+              availableSlots = profileForm.availability[dateStr]
+              isOverride = true
+          } else if (profileForm.availability[dayName]) {
+              availableSlots = profileForm.availability[dayName]
+          }
+      }
 
       days.push({
         date,
@@ -184,10 +202,12 @@ export default function ClientDashboard() {
           date.getMonth() === today.getMonth() &&
           date.getFullYear() === today.getFullYear(),
         isCurrentMonth: date.getMonth() === currentDate.getMonth(),
+        availableSlots,
+        isOverride,
       })
     }
     setCalendarDays(days)
-  }, [currentDate, bookings])
+  }, [currentDate, bookings, profileForm])
 
   const navigateMonth = (dir: "prev" | "next") => {
     const d = new Date(currentDate)
@@ -257,6 +277,74 @@ export default function ClientDashboard() {
       updated[index] = { ...updated[index], [field]: value }
       setProfileForm({ ...profileForm, services: updated })
   }
+
+  const handleAddSlot = (day: string) => {
+      if (!profileForm) return
+      const input = document.getElementById(`time-input-${day}`) as HTMLInputElement
+      const time = input?.value
+      if (!time) return
+
+      const av = { ...(profileForm.availability || {}) }
+      if (!av[day]) av[day] = []
+      if (!av[day].includes(time)) {
+          av[day] = [...av[day], time].sort()
+      }
+      setProfileForm({ ...profileForm, availability: av })
+      input.value = "" // clear input
+  }
+
+  const handleRemoveSlot = (day: string, time: string) => {
+      if (!profileForm) return
+      const av = { ...(profileForm.availability || {}) }
+      if (av[day]) {
+          av[day] = av[day].filter((t) => t !== time)
+      }
+      setProfileForm({ ...profileForm, availability: av })
+  }
+
+  const handleAddOverrideSlot = () => {
+      if (!profileForm || !selectedDayOverride || !overrideInputTime) return
+      const dateStr = selectedDayOverride.date.toISOString().split("T")[0]
+      const av = { ...(profileForm.availability || {}) }
+      if (!av[dateStr]) av[dateStr] = []
+      if (!av[dateStr].includes(overrideInputTime)) {
+          av[dateStr] = [...av[dateStr], overrideInputTime].sort()
+      }
+      setProfileForm({ ...profileForm, availability: av })
+      setOverrideInputTime("")
+  }
+
+  const handleRemoveOverrideSlot = (time: string) => {
+      if (!profileForm || !selectedDayOverride) return
+      const dateStr = selectedDayOverride.date.toISOString().split("T")[0]
+      const av = { ...(profileForm.availability || {}) }
+      if (av[dateStr]) {
+          av[dateStr] = av[dateStr].filter((t) => t !== time)
+      }
+      setProfileForm({ ...profileForm, availability: av })
+  }
+
+  const handleClearOverride = () => {
+      if (!profileForm || !selectedDayOverride) return
+      const dateStr = selectedDayOverride.date.toISOString().split("T")[0]
+      const av = { ...(profileForm.availability || {}) }
+      delete av[dateStr]
+      setProfileForm({ ...profileForm, availability: av })
+      setSelectedDayOverride(null)
+  }
+
+  const toggleDay = (day: string) => {
+      if (!profileForm) return
+      const av = { ...(profileForm.availability || {}) }
+      if (av[day]) {
+         delete av[day] // Disable day
+      } else {
+         av[day] = ["09:00", "14:00"] // Default enable
+      }
+      setProfileForm({ ...profileForm, availability: av })
+  }
+
+  const DAYS_OF_WEEK = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
@@ -330,8 +418,9 @@ export default function ClientDashboard() {
 
         <Tabs defaultValue="calendar" className="w-full">
           <div className="flex justify-between items-center mb-6">
-            <TabsList className="grid w-[400px] grid-cols-2">
+            <TabsList className="grid w-[600px] grid-cols-3">
               <TabsTrigger value="calendar">Schedule & Bookings</TabsTrigger>
+              <TabsTrigger value="availability">Availability</TabsTrigger>
               <TabsTrigger value="profile">Business Profile</TabsTrigger>
             </TabsList>
           </div>
@@ -398,6 +487,7 @@ export default function ClientDashboard() {
                         className={`min-h-[70px] p-1.5 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors ${
                           day.isToday ? "bg-primary/10 border-primary" : "border-transparent"
                         } ${!day.isCurrentMonth ? "opacity-40" : ""}`}
+                        onClick={() => setSelectedDayOverride(day)}
                       >
                         <div className="text-xs font-medium mb-1">{day.date.getDate()}</div>
                         <div className="space-y-0.5">
@@ -405,13 +495,18 @@ export default function ClientDashboard() {
                             <div
                               key={b._id}
                               className="text-[10px] p-0.5 rounded bg-primary/20 text-primary font-medium truncate cursor-pointer"
-                              onClick={() => setSelectedBooking(b)}
+                              onClick={(e) => { e.stopPropagation(); setSelectedBooking(b); }}
                             >
                               {b.time} {b.service_name}
                             </div>
                           ))}
                           {day.bookings.length > 2 && (
                             <div className="text-[10px] text-muted-foreground">+{day.bookings.length - 2}</div>
+                          )}
+                          {day.availableSlots.length > 0 && (
+                            <div className="text-[10px] text-green-600 mt-1 font-medium">
+                                {day.isOverride ? "⭐ " : ""}{day.availableSlots.length} open slot{day.availableSlots.length !== 1 && "s"}
+                            </div>
                           )}
                         </div>
                       </motion.div>
@@ -427,7 +522,8 @@ export default function ClientDashboard() {
                         initial={{ y: 10, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         transition={{ delay: i * 0.05 }}
-                        className={`p-3 border rounded-lg ${day.isToday ? "bg-primary/10 border-primary" : ""}`}
+                        className={`p-3 border rounded-lg cursor-pointer hover:bg-muted/10 transition-colors ${day.isToday ? "bg-primary/10 border-primary" : ""}`}
+                        onClick={() => setSelectedDayOverride(day)}
                       >
                         <div className="text-center mb-2">
                           <div className="text-xs text-muted-foreground">
@@ -442,12 +538,17 @@ export default function ClientDashboard() {
                             <div
                               key={b._id}
                               className="text-[10px] p-1.5 rounded bg-primary/20 text-primary cursor-pointer hover:bg-primary/30 transition-colors"
-                              onClick={() => setSelectedBooking(b)}
+                              onClick={(e) => { e.stopPropagation(); setSelectedBooking(b); }}
                             >
                               <div className="font-semibold">{b.time}</div>
                               <div className="truncate">{b.service_name}</div>
                             </div>
                           ))}
+                          {day.availableSlots.length > 0 && (
+                            <div className="text-[10px] mt-1 text-green-600 border border-green-200 bg-green-50 rounded p-1 font-medium bg-opacity-50">
+                                {day.isOverride ? "⭐ " : ""}{day.availableSlots.length} open slot{day.availableSlots.length !== 1 && "s"}
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     ))}
@@ -547,6 +648,83 @@ export default function ClientDashboard() {
             </Card>
           </motion.div>
         </div>
+      </TabsContent>
+
+      <TabsContent value="availability" className="mt-0 space-y-6">
+        <Card>
+            <CardHeader className="flex flex-row justify-between items-center">
+                <div>
+                    <CardTitle>Availability & Working Hours</CardTitle>
+                    <p className="text-sm text-muted-foreground mt-1">Configure your weekly schedule. These slots will be available for users to book.</p>
+                </div>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-6">
+                    {DAYS_OF_WEEK.map((day) => {
+                        const isActive = !!profileForm?.availability?.[day]
+                        const slots = profileForm?.availability?.[day] || []
+                        
+                        return (
+                            <div key={day} className={`flex flex-col sm:flex-row sm:items-start gap-4 p-4 border rounded-xl transition-colors ${isActive ? 'bg-card' : 'bg-muted/30'}`}>
+                                <div className="w-40 flex items-center gap-3 pt-1">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={isActive} 
+                                        onChange={() => toggleDay(day)}
+                                        className="h-4 w-4 rounded border-gray-300"
+                                    />
+                                    <span className="font-semibold capitalize">{day}</span>
+                                </div>
+                                
+                                <div className="flex-1 space-y-3">
+                                    {isActive ? (
+                                        <>
+                                            {slots.length > 0 ? (
+                                                <div className="flex flex-wrap gap-2">
+                                                    {slots.map(time => (
+                                                        <div key={time} className="flex items-center gap-1 bg-primary/10 text-primary px-3 py-1.5 rounded-lg text-sm font-medium">
+                                                            {time}
+                                                            <button 
+                                                                onClick={() => handleRemoveSlot(day, time)}
+                                                                className="ml-1 hover:text-red-500 rounded-full p-0.5 transition-colors"
+                                                            >
+                                                                <XCircle className="h-3.5 w-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground italic">No slots added yet.</p>
+                                            )}
+                                            
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <Input 
+                                                    type="time" 
+                                                    id={`time-input-${day}`}
+                                                    className="w-32 h-9 text-sm" 
+                                                />
+                                                <Button size="sm" variant="secondary" onClick={() => handleAddSlot(day)}>
+                                                    Add Slot
+                                                </Button>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground pt-1 italic">Unavailable</p>
+                                    )}
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+                
+                <div className="flex justify-end pt-6 border-t mt-6">
+                    <Button onClick={handleSaveProfile} disabled={isSavingProfile} className="w-40">
+                        {isSavingProfile ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                        {isSavingProfile ? "Saving..." : "Save Availability"}
+                    </Button>
+                </div>
+            </CardContent>
+        </Card>
       </TabsContent>
 
       <TabsContent value="profile" className="mt-0 space-y-6">
@@ -723,6 +901,81 @@ export default function ClientDashboard() {
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* Date Override Modal */}
+      <AnimatePresence>
+          {selectedDayOverride && (
+              <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+                  onClick={() => setSelectedDayOverride(null)}
+              >
+                  <motion.div
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.9, opacity: 0 }}
+                      className="bg-background rounded-xl shadow-2xl max-w-md w-full p-6"
+                      onClick={(e) => e.stopPropagation()}
+                  >
+                      <div className="flex items-center justify-between mb-2">
+                          <h3 className="font-semibold text-lg">{selectedDayOverride.date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</h3>
+                          <Button variant="ghost" size="sm" onClick={() => setSelectedDayOverride(null)} className="rounded-full h-7 w-7 p-0">×</Button>
+                      </div>
+
+                      <div className="mb-4">
+                          <p className="text-sm text-muted-foreground">Manage your availability specifically for {selectedDayOverride.date.toISOString().split("T")[0]}. Overrides take precedence over your regular weekly schedule.</p>
+                      </div>
+
+                      <div className="space-y-4">
+                          <div className="p-4 border rounded-xl bg-muted/20">
+                              <div className="flex justify-between items-center mb-3">
+                                  <span className="font-medium text-sm flex items-center gap-2">
+                                      {selectedDayOverride.isOverride ? <span className="text-yellow-500">⭐ Override Active</span> : <span>📅 Recurring Schedule Active</span>}
+                                  </span>
+                                  {selectedDayOverride.isOverride && (
+                                      <Button variant="ghost" size="sm" onClick={handleClearOverride} className="h-7 text-xs text-red-500 hover:text-red-700">Clear Override</Button>
+                                  )}
+                              </div>
+                              
+                              {selectedDayOverride.availableSlots.length > 0 ? (
+                                  <div className="flex flex-wrap gap-2 text-sm max-h-32 overflow-y-auto pr-2 pb-2">
+                                    {selectedDayOverride.availableSlots.map(time => (
+                                        <div key={time} className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-medium ${selectedDayOverride.isOverride ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100' : 'bg-primary/10 text-primary'}`}>
+                                            {time}
+                                            {selectedDayOverride.isOverride && (
+                                                <button onClick={() => handleRemoveOverrideSlot(time)} className="ml-1 hover:text-red-500 rounded-full p-0.5 transition-colors">
+                                                    <XCircle className="h-3 w-3" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                  </div>
+                              ) : (
+                                  <p className="text-sm text-muted-foreground italic mb-2">No slots available on this day.</p>
+                              )}
+                          </div>
+
+                          <div className="p-4 border border-dashed rounded-xl space-y-3">
+                              <h4 className="text-sm font-medium">Add Special Time Slot</h4>
+                              <div className="flex gap-2">
+                                  <Input type="time" value={overrideInputTime} onChange={e => setOverrideInputTime(e.target.value)} className="w-32" />
+                                  <Button onClick={handleAddOverrideSlot} size="sm" variant="secondary">Add Override</Button>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="mt-6 flex justify-end">
+                          <Button onClick={async () => {
+                              setSelectedDayOverride(null)
+                              await handleSaveProfile()
+                          }}>Save & Close</Button>
+                      </div>
+                  </motion.div>
+              </motion.div>
+          )}
       </AnimatePresence>
     </div>
   )

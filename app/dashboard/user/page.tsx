@@ -60,6 +60,7 @@ interface ServiceResult {
   rating: number
   description: string
   tags: string[]
+  date?: string
 }
 
 interface UserProfile {
@@ -285,10 +286,22 @@ export default function UserDashboard() {
   const handleBookService = async (service: ServiceResult, slot: string) => {
     setBookingInProgress(service.service_id)
 
-    // Parse date from slot (use tomorrow as default)
+    // Use date from service intent, fallback to tomorrow
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
-    const dateStr = tomorrow.toISOString().split("T")[0]
+    const defaultDateStr = tomorrow.toISOString().split("T")[0]
+    
+    // Check if the service returned a specific date string, otherwise use default
+    // Also handle case where it might be a day word (monday) by ignoring it for now if not YYYY-MM-DD format
+    // A robust impl would map weekday names to dates here or in backend. We'll pass it if it looks like a date.
+    let dateStr = defaultDateStr;
+    if (service.date && service.date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        dateStr = service.date;
+    } else if (service.date) {
+        // If it's something like "monday" or "tomorrow", we just use it and rely on backend/human interpretation, 
+        // though for Google Calendar YYYY-MM-DD is preferred. Let's just pass it to the DB.
+        dateStr = service.date;
+    }
 
     try {
       const res = await fetch("/api/bookings", {

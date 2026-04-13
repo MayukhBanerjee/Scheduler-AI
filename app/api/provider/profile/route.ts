@@ -74,6 +74,9 @@ export async function PUT(req: Request) {
           location,
           rating: rating ?? 5.0,
           services: servicesArray,
+          availability: typeof body.availability === "object" && !Array.isArray(body.availability)
+            ? body.availability
+            : {},
           search_tags:    searchTags,
           location_lower: (location ?? "").toLowerCase(),
         },

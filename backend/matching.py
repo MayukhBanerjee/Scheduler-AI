@@ -155,22 +155,34 @@ def get_day_key(time_str: Optional[str]) -> Optional[str]:
 def filter_by_availability(
     providers: List[Dict],
     time_str: Optional[str],
+    date_str: Optional[str] = None,
 ) -> List[Tuple[Dict, List[str]]]:
     """
     Returns list of (provider, matching_slots) pairs.
     Each provider has an `availability` dict keyed by day name.
     """
     time_bounds = parse_time_preference(time_str)
-    day_key = get_day_key(time_str)
+    
+    day_key = get_day_key(time_str) or get_day_key(date_str)
+    
+    if date_str and re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+        try:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            days_of_week = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            day_key = days_of_week[dt.weekday()]
+        except ValueError:
+            pass
 
     result = []
     for provider in providers:
         availability: Dict[str, List[str]] = provider.get("availability", {})
 
-        if day_key and day_key in availability:
+        if date_str and date_str in availability:
+            slots = availability[date_str]
+        elif day_key and day_key in availability:
             slots = availability[day_key]
-        elif day_key:
-            # day requested but no slots for that day
+        elif day_key or date_str:
+            # day requested but no slots for that day/date
             continue
         else:
             # No day preference — collect all slots
@@ -243,6 +255,7 @@ def rank_results(
             "rating": p.get("rating", 4.0),
             "description": s.get("description", ""),
             "tags": s.get("tags", []),
+            "date": intent.get("date"),
         }
         for score, s, p, slots in scored[:5]  # Top 5 results
     ]

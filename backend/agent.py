@@ -254,7 +254,9 @@ async def node_db_retriever(state: AgentState) -> AgentState:
             })
 
     # Build availability map and filter by time preference
-    filtered            = filter_by_availability(providers, time_pref)
+    intent = state.get("intent") or {}
+    date_str = intent.get("date")
+    filtered            = filter_by_availability(providers, time_pref, date_str)
     availability_map    = {str(p.get("_id", "")): slots for p, slots in filtered}
     available_providers = [p for p, _ in filtered]
 
