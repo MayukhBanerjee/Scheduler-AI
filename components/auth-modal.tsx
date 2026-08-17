@@ -14,7 +14,7 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose, action }: AuthModalProps) {
 
-const getHref = (role: "user" | "admin") => {
+const getHref = (role: "user" | "provider") => {
   if (action === "login") {
     return `/login?type=${role}`;
   }
@@ -78,7 +78,7 @@ const getHref = (role: "user" | "admin") => {
                   </motion.div>
                 </Link>
 
-                <Link href={getHref("admin")} onClick={onClose}>
+                <Link href={getHref("provider")} onClick={onClose}>
                   <motion.div
                     whileHover={{ scale: 1.03, y: -5 }}
                     whileTap={{ scale: 0.98 }}

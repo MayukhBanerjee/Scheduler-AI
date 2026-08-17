@@ -258,8 +258,11 @@ def make_providers() -> list:
         },
     ]
 
-    # Auto-compute search_tags and location_lower for each provider
+    # Auto-compute search_tags, location_lower, and stable service ids
     for p in raw:
+        pid = str(p["_id"])
+        for i, svc in enumerate(p.get("services", [])):
+            svc["id"] = f"{pid}:{i}"
         p["search_tags"] = compute_search_tags(p["category"], p["services"])
         p["location_lower"] = p["location"].lower()
 
@@ -321,6 +324,14 @@ async def seed():
     await db["bookings"].create_index([("user_id", 1)])
     await db["bookings"].create_index([("provider_id", 1)])
     await db["bookings"].create_index([("date", 1)])
+    # Prevent double-booking the same provider slot (active statuses only).
+    # Atlas/Mongo partial indexes do not support $ne — use $in instead.
+    await db["bookings"].create_index(
+        [("provider_id", 1), ("date", 1), ("time", 1)],
+        unique=True,
+        partialFilterExpression={"status": {"$in": ["confirmed", "pending", "completed"]}},
+        name="unique_active_provider_slot",
+    )
     print("  ✅ Created optimized indexes")
 
     client.close()

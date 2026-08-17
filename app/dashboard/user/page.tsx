@@ -8,21 +8,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   Calendar,
   MessageSquare,
-  Phone,
   Send,
   Bot,
   User,
   Mic,
   MicOff,
-  PhoneCall,
-  PhoneOff,
-  Volume2,
-  VolumeX,
   LogOut,
   Star,
   MapPin,
@@ -30,10 +24,12 @@ import {
   DollarSign,
   CheckCircle,
   Loader2,
-  RefreshCw,
+  XCircle,
+  ListChecks,
 } from "lucide-react"
 import Link from "next/link"
-import { GoogleCalendarIntegration } from "@/components/google-calendar-integration"
+import { BookingCalendar } from "@/components/booking-calendar"
+import { useToast } from "@/hooks/use-toast"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,7 +38,7 @@ interface Message {
   content: string
   sender: "user" | "ai"
   timestamp: Date
-  type?: "booking" | "confirmation" | "general" | "voice" | "results"
+  type?: "booking" | "confirmation" | "general" | "results" | "clarification"
   services?: ServiceResult[]
 }
 
@@ -69,7 +65,49 @@ interface UserProfile {
   role: string
 }
 
-// ─── Service Card Component ────────────────────────────────────────────────────
+interface BookingRow {
+  _id: string
+  service_name: string
+  provider_name?: string
+  date: string
+  time: string
+  status: string
+  location?: string
+}
+
+const CHAT_STORAGE_KEY = "scheduleai_user_chat_v1"
+
+function renderRichText(content: string) {
+  // Simple **bold** and [label](url) rendering
+  const parts: React.ReactNode[] = []
+  const regex = /(\*\*[^*]+\*\*|\[([^\]]+)\]\(([^)]+)\))/g
+  let last = 0
+  let match: RegExpExecArray | null
+  let key = 0
+  while ((match = regex.exec(content)) !== null) {
+    if (match.index > last) {
+      parts.push(content.slice(last, match.index))
+    }
+    if (match[0].startsWith("**")) {
+      parts.push(<strong key={key++}>{match[0].slice(2, -2)}</strong>)
+    } else {
+      parts.push(
+        <a
+          key={key++}
+          href={match[3]}
+          className="underline underline-offset-2"
+          target="_blank"
+          rel="noreferrer"
+        >
+          {match[2]}
+        </a>
+      )
+    }
+    last = match.index + match[0].length
+  }
+  if (last < content.length) parts.push(content.slice(last))
+  return parts.length ? parts : content
+}
 
 function ServiceCard({
   service,
@@ -81,12 +119,12 @@ function ServiceCard({
   isBooking: boolean
 }) {
   const [selectedSlot, setSelectedSlot] = useState<string | null>(null)
+  const hasSlots = service.available_slots.length > 0
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -2 }}
       className="border rounded-xl p-4 bg-card hover:shadow-md transition-all"
     >
       <div className="flex items-start justify-between mb-3">
@@ -115,13 +153,14 @@ function ServiceCard({
         </span>
       </div>
 
-      {service.available_slots.length > 0 && (
+      {hasSlots && (
         <div className="mb-3">
           <p className="text-xs text-muted-foreground mb-1.5">Available slots:</p>
           <div className="flex flex-wrap gap-1.5">
             {service.available_slots.slice(0, 4).map((slot) => (
               <button
                 key={slot}
+                type="button"
                 onClick={() => setSelectedSlot(slot === selectedSlot ? null : slot)}
                 className={`text-xs px-2 py-1 rounded-md border transition-all ${
                   selectedSlot === slot
@@ -139,49 +178,49 @@ function ServiceCard({
       <Button
         size="sm"
         className="w-full"
-        disabled={(!selectedSlot && service.available_slots.length > 0) || isBooking}
-        onClick={() => onBook(service, selectedSlot || service.available_slots[0] || "09:00")}
+        disabled={!hasSlots || !selectedSlot || isBooking}
+        onClick={() => selectedSlot && onBook(service, selectedSlot)}
       >
         {isBooking ? (
           <Loader2 className="h-3 w-3 animate-spin mr-1" />
         ) : (
           <CheckCircle className="h-3 w-3 mr-1" />
         )}
-        {isBooking ? "Booking..." : selectedSlot ? `Book at ${selectedSlot}` : "Book Now"}
+        {isBooking ? "Booking..." : selectedSlot ? `Book at ${selectedSlot}` : "Select a slot"}
       </Button>
     </motion.div>
   )
 }
 
-// ─── Main Dashboard ─────────────────────────────────────────────────────────
-
 export default function UserDashboard() {
   const router = useRouter()
+  const { toast } = useToast()
   const [user, setUser] = useState<UserProfile | null>(null)
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      content:
-        "Hello! 👋 I'm your AI booking assistant. Tell me what service you're looking for — haircut, dental checkup, massage, fitness session, and more. Just describe what you need!",
-      sender: "ai",
-      timestamp: new Date(),
-      type: "general",
-    },
-  ])
+  const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState("")
   const [isTyping, setIsTyping] = useState(false)
   const [isListening, setIsListening] = useState(false)
-  const [isInCall, setIsInCall] = useState(false)
-  const [callDuration, setCallDuration] = useState(0)
-  const [isMuted, setIsMuted] = useState(false)
+  const [speechSupported, setSpeechSupported] = useState(false)
   const [bookingInProgress, setBookingInProgress] = useState<string | null>(null)
-  const [conversationId] = useState(`conv-${Date.now()}`)
+  const [conversationId, setConversationId] = useState(`conv-${Date.now()}`)
+  const [myBookings, setMyBookings] = useState<BookingRow[]>([])
+  const [calendarKey, setCalendarKey] = useState(0)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const callTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const hydratedRef = useRef(false)
 
-  // Fetch current user profile
+  const defaultWelcome: Message = {
+    id: "1",
+    content:
+      "Hello! I'm your AI booking assistant. Tell me what you need — or tap the mic — and I'll find verified slots.",
+    sender: "ai",
+    timestamp: new Date(),
+    type: "general",
+  }
+
   useEffect(() => {
     fetch("/api/auth/me")
       .then((res) => res.json())
@@ -192,36 +231,132 @@ export default function UserDashboard() {
       .catch(() => router.push("/login"))
   }, [router])
 
-  // Auto-scroll chat
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHAT_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          conversationId?: string
+          messages?: Array<Omit<Message, "timestamp"> & { timestamp: string }>
+        }
+        if (parsed.conversationId) setConversationId(parsed.conversationId)
+        if (parsed.messages?.length) {
+          setMessages(
+            parsed.messages.map((m) => ({
+              ...m,
+              timestamp: new Date(m.timestamp),
+            }))
+          )
+        } else {
+          setMessages([defaultWelcome])
+        }
+      } else {
+        setMessages([defaultWelcome])
+      }
+    } catch {
+      setMessages([defaultWelcome])
+    }
+    hydratedRef.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!hydratedRef.current || messages.length === 0) return
+    localStorage.setItem(
+      CHAT_STORAGE_KEY,
+      JSON.stringify({
+        conversationId,
+        messages: messages.map((m) => ({
+          ...m,
+          timestamp: m.timestamp.toISOString(),
+        })),
+      })
+    )
+  }, [messages, conversationId])
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  // Call timer
-  useEffect(() => {
-    if (isInCall) {
-      callTimerRef.current = setInterval(() => {
-        setCallDuration((prev) => prev + 1)
-      }, 1000)
-    } else {
-      if (callTimerRef.current) clearInterval(callTimerRef.current)
-      setCallDuration(0)
+  const fetchMyBookings = useCallback(async () => {
+    try {
+      const res = await fetch("/api/bookings")
+      if (!res.ok) return
+      const data = await res.json()
+      setMyBookings(
+        (data.bookings || []).filter((b: BookingRow) => b.status !== "cancelled").slice(0, 10)
+      )
+    } catch {
+      /* ignore */
     }
-    return () => {
-      if (callTimerRef.current) clearInterval(callTimerRef.current)
-    }
-  }, [isInCall])
+  }, [])
 
-  const formatCallDuration = (seconds: number) => {
-    const m = Math.floor(seconds / 60)
-    const s = seconds % 60
-    return `${m}:${s.toString().padStart(2, "0")}`
+  useEffect(() => {
+    fetchMyBookings()
+  }, [fetchMyBookings])
+
+  useEffect(() => {
+    const SR =
+      typeof window !== "undefined"
+        ? window.SpeechRecognition || window.webkitSpeechRecognition
+        : undefined
+    setSpeechSupported(Boolean(SR))
+    if (!SR) return
+
+    const recognition = new SR()
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = "en-US"
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = ""
+      let finalText = ""
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript
+        if (event.results[i].isFinal) finalText += transcript
+        else interim += transcript
+      }
+      if (finalText) {
+        setInputMessage(finalText.trim())
+      } else if (interim) {
+        setInputMessage(interim)
+      }
+    }
+    recognition.onerror = () => setIsListening(false)
+    recognition.onend = () => setIsListening(false)
+    recognitionRef.current = recognition
+
+    return () => {
+      recognition.stop()
+      recognitionRef.current = null
+    }
+  }, [])
+
+  const toggleVoice = () => {
+    const recognition = recognitionRef.current
+    if (!recognition) {
+      toast({
+        title: "Voice not supported",
+        description: "Voice input needs Chrome or Edge.",
+        variant: "destructive",
+      })
+      return
+    }
+    if (isListening) {
+      recognition.stop()
+      setIsListening(false)
+      return
+    }
+    setIsListening(true)
+    try {
+      recognition.start()
+    } catch {
+      setIsListening(false)
+    }
   }
 
-  // ─── Send Message ────────────────────────────────────────────────────────
-
   const handleSendMessage = useCallback(async () => {
-    if (!inputMessage.trim() || isInCall) return
+    if (!inputMessage.trim()) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -230,6 +365,14 @@ export default function UserDashboard() {
       timestamp: new Date(),
       type: "general",
     }
+
+    const historyPayload = [...messages, userMessage]
+      .filter((m) => m.content)
+      .slice(-8)
+      .map((m) => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        content: m.content,
+      }))
 
     setMessages((prev) => [...prev, userMessage])
     const sentText = inputMessage
@@ -240,39 +383,52 @@ export default function UserDashboard() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: sentText, conversation_id: conversationId }),
+        body: JSON.stringify({
+          message: sentText,
+          conversation_id: conversationId,
+          messages: historyPayload.slice(0, -1),
+        }),
       })
 
-      if (!res.ok) {
-        throw new Error("Backend unreachable")
-      }
+      if (!res.ok) throw new Error("Backend unreachable")
 
       const data = await res.json()
+      const isClarification = Boolean(data.needs_clarification)
+      const services = isClarification ? [] : data.services || []
 
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: data.reply || "I'm not sure how to help with that. Could you rephrase?",
+        content:
+          data.clarification_question && isClarification
+            ? data.reply || data.clarification_question
+            : data.reply || "I'm not sure how to help with that. Could you rephrase?",
         sender: "ai",
         timestamp: new Date(),
-        type: data.services?.length > 0 ? "results" : "general",
-        services: data.services || [],
+        type: isClarification
+          ? "clarification"
+          : services.length > 0
+            ? "results"
+            : "general",
+        services,
       }
 
       setMessages((prev) => [...prev, aiMessage])
-    } catch (err) {
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content:
-          "⚠️ The AI backend is offline. Make sure the Python server is running on port 8000. Run: `uvicorn main:app --reload` in the backend folder.",
-        sender: "ai",
-        timestamp: new Date(),
-        type: "general",
-      }
-      setMessages((prev) => [...prev, errorMessage])
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          content:
+            "The AI backend is offline. Make sure the Python server is running on port 8000 and BACKEND_API_KEY matches.",
+          sender: "ai",
+          timestamp: new Date(),
+          type: "general",
+        },
+      ])
     } finally {
       setIsTyping(false)
     }
-  }, [inputMessage, isInCall, conversationId])
+  }, [inputMessage, conversationId, messages])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -281,26 +437,14 @@ export default function UserDashboard() {
     }
   }
 
-  // ─── Booking Flow ────────────────────────────────────────────────────────
-
   const handleBookService = async (service: ServiceResult, slot: string) => {
     setBookingInProgress(service.service_id)
 
-    // Use date from service intent, fallback to tomorrow
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
-    const defaultDateStr = tomorrow.toISOString().split("T")[0]
-    
-    // Check if the service returned a specific date string, otherwise use default
-    // Also handle case where it might be a day word (monday) by ignoring it for now if not YYYY-MM-DD format
-    // A robust impl would map weekday names to dates here or in backend. We'll pass it if it looks like a date.
-    let dateStr = defaultDateStr;
-    if (service.date && service.date.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        dateStr = service.date;
-    } else if (service.date) {
-        // If it's something like "monday" or "tomorrow", we just use it and rely on backend/human interpretation, 
-        // though for Google Calendar YYYY-MM-DD is preferred. Let's just pass it to the DB.
-        dateStr = service.date;
+    let dateStr = tomorrow.toISOString().split("T")[0]
+    if (service.date && /^\d{4}-\d{2}-\d{2}$/.test(service.date)) {
+      dateStr = service.date
     }
 
     try {
@@ -314,7 +458,6 @@ export default function UserDashboard() {
           time: slot,
           duration_minutes: service.duration_minutes,
           service_name: service.service_name,
-          provider_email: service.provider_email,
         }),
       })
 
@@ -323,68 +466,60 @@ export default function UserDashboard() {
       const confirmMsg: Message = {
         id: Date.now().toString(),
         content: res.ok
-          ? `✅ **Booking Confirmed!** Your ${service.service_name} at ${service.provider_name} is booked for ${slot} on ${dateStr}.${
-              data.calendar_link
-                ? ` [View in Google Calendar](${data.calendar_link})`
-                : " Calendar event created!"
-            }`
-          : `❌ Booking failed: ${data.error || "Please try again."}`,
+          ? `**Booking confirmed!** ${service.service_name} at ${service.provider_name} — ${slot} on ${dateStr}. Saved to your ScheduleAI calendar.`
+          : `Booking failed: ${data.error || "Please try again."}`,
         sender: "ai",
         timestamp: new Date(),
         type: "confirmation",
       }
 
       setMessages((prev) => [...prev, confirmMsg])
-    } catch {
-      const errMsg: Message = {
-        id: Date.now().toString(),
-        content: "❌ Could not complete booking. Please try again.",
-        sender: "ai",
-        timestamp: new Date(),
-        type: "general",
+      if (res.ok) {
+        toast({ title: "Booked", description: "Added to your ScheduleAI calendar." })
+        fetchMyBookings()
+        setCalendarKey((k) => k + 1)
+      } else {
+        toast({
+          title: "Booking failed",
+          description: data.error || "Please try another slot.",
+          variant: "destructive",
+        })
       }
-      setMessages((prev) => [...prev, errMsg])
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          content: "Could not complete booking. Please try again.",
+          sender: "ai",
+          timestamp: new Date(),
+          type: "general",
+        },
+      ])
     } finally {
       setBookingInProgress(null)
     }
   }
 
-  // ─── Voice / Call Controls ────────────────────────────────────────────────
-
-  const toggleVoice = () => {
-    setIsListening(!isListening)
-    if (!isListening) {
-      setTimeout(() => setIsListening(false), 3000)
+  const handleCancelBooking = async (id: string) => {
+    setCancellingId(id)
+    try {
+      const res = await fetch(`/api/bookings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel" }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: "Cancel failed", description: data.error, variant: "destructive" })
+      } else {
+        toast({ title: "Cancelled", description: "Slot freed for others." })
+        fetchMyBookings()
+        setCalendarKey((k) => k + 1)
+      }
+    } finally {
+      setCancellingId(null)
     }
-  }
-
-  const startCall = () => {
-    setIsInCall(true)
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        content: "📞 Voice call interface is ready. Full voice processing is coming soon! You can still type in the chat.",
-        sender: "ai",
-        timestamp: new Date(),
-        type: "voice",
-      },
-    ])
-  }
-
-  const endCall = () => {
-    setIsInCall(false)
-    setIsMuted(false)
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        content: `Call ended (${formatCallDuration(callDuration)}). Back to chat mode!`,
-        sender: "ai",
-        timestamp: new Date(),
-        type: "voice",
-      },
-    ])
   }
 
   const handleLogout = async () => {
@@ -393,11 +528,8 @@ export default function UserDashboard() {
     router.refresh()
   }
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <motion.header
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -412,15 +544,7 @@ export default function UserDashboard() {
           </Link>
 
           <div className="flex items-center space-x-3">
-            <Badge variant="secondary">User Dashboard</Badge>
-            {isInCall && (
-              <motion.div animate={{ opacity: [1, 0.5, 1] }} transition={{ repeat: Infinity, duration: 1 }}>
-                <Badge className="bg-green-500 text-white">
-                  <PhoneCall className="h-3 w-3 mr-1" />
-                  {formatCallDuration(callDuration)}
-                </Badge>
-              </motion.div>
-            )}
+            <Badge variant="secondary">Customer</Badge>
             {user && (
               <div className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
@@ -438,14 +562,12 @@ export default function UserDashboard() {
         </div>
       </motion.header>
 
-      <div className="container mx-auto p-4 max-w-7xl h-screen flex flex-col pt-20">
-        <div className="grid lg:grid-cols-3 gap-6 flex-1 min-h-0 mb-4 h-[calc(100vh-8rem)]">
-          {/* Chat Panel */}
+      <div className="container mx-auto p-4 max-w-7xl flex flex-col pt-4 pb-8">
+        <div className="grid lg:grid-cols-3 gap-6 min-h-[70vh] lg:h-[calc(100vh-8rem)]">
           <motion.div
             initial={{ y: 50, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.1 }}
-            className="lg:col-span-2 min-h-0 flex flex-col h-full"
+            className="lg:col-span-2 min-h-[28rem] flex flex-col h-full"
           >
             <Card className="flex-1 flex flex-col min-h-0">
               <CardHeader className="flex-shrink-0 pb-3">
@@ -460,38 +582,20 @@ export default function UserDashboard() {
                       </Badge>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
-                    {!isInCall && (
-                      <Button
-                        variant={isListening ? "default" : "outline"}
-                        size="sm"
-                        onClick={toggleVoice}
-                        className={isListening ? "bg-orange-500 animate-pulse" : ""}
-                        title="Voice input (coming soon)"
-                      >
-                        {isListening ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
-                      </Button>
-                    )}
-                    {isInCall ? (
-                      <div className="flex gap-2">
-                        <Button
-                          variant={isMuted ? "destructive" : "outline"}
-                          size="sm"
-                          onClick={() => setIsMuted(!isMuted)}
-                        >
-                          {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={endCall}>
-                          <PhoneOff className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button size="sm" onClick={startCall} className="bg-green-600 hover:bg-green-700 text-white">
-                        <PhoneCall className="h-4 w-4 mr-1" />
-                        Call AI
-                      </Button>
-                    )}
-                  </div>
+                  <Button
+                    variant={isListening ? "default" : "outline"}
+                    size="sm"
+                    onClick={toggleVoice}
+                    disabled={!speechSupported}
+                    title={
+                      speechSupported
+                        ? "Speak your request"
+                        : "Voice input needs Chrome or Edge"
+                    }
+                    className={isListening ? "bg-orange-500 animate-pulse" : ""}
+                  >
+                    {isListening ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                  </Button>
                 </CardTitle>
               </CardHeader>
 
@@ -504,7 +608,6 @@ export default function UserDashboard() {
                           key={message.id}
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
                           className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
                         >
                           <div
@@ -513,7 +616,9 @@ export default function UserDashboard() {
                             }`}
                           >
                             <Avatar className="h-7 w-7 flex-shrink-0">
-                              <AvatarFallback className={message.sender === "ai" ? "bg-primary/20" : "bg-muted"}>
+                              <AvatarFallback
+                                className={message.sender === "ai" ? "bg-primary/20" : "bg-muted"}
+                              >
                                 {message.sender === "user" ? (
                                   <User className="h-3.5 w-3.5" />
                                 ) : (
@@ -527,26 +632,24 @@ export default function UserDashboard() {
                                 className={`rounded-2xl p-3 text-sm ${
                                   message.sender === "user"
                                     ? "bg-primary text-primary-foreground"
-                                    : message.type === "voice"
-                                    ? "bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800"
                                     : message.type === "confirmation"
-                                    ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800"
-                                    : "bg-muted"
+                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800"
+                                      : message.type === "clarification"
+                                        ? "bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800"
+                                        : "bg-muted"
                                 }`}
                               >
-                                {message.type === "voice" && (
-                                  <div className="flex items-center gap-1 mb-1 text-xs text-green-600 dark:text-green-400 font-medium">
-                                    <Phone className="h-3 w-3" />
-                                    Voice
-                                  </div>
-                                )}
-                                <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+                                <p className="whitespace-pre-wrap leading-relaxed">
+                                  {renderRichText(message.content)}
+                                </p>
                                 <p className="text-xs opacity-60 mt-1">
-                                  {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                  {message.timestamp.toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
                                 </p>
                               </div>
 
-                              {/* Service Results Cards */}
                               {message.services && message.services.length > 0 && (
                                 <div className="grid gap-2">
                                   {message.services.map((service) => (
@@ -565,13 +668,8 @@ export default function UserDashboard() {
                       ))}
                     </AnimatePresence>
 
-                    {/* Typing indicator */}
                     {isTyping && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex justify-start"
-                      >
+                      <div className="flex justify-start">
                         <div className="flex items-center gap-2">
                           <Avatar className="h-7 w-7">
                             <AvatarFallback className="bg-primary/20">
@@ -579,19 +677,10 @@ export default function UserDashboard() {
                             </AvatarFallback>
                           </Avatar>
                           <div className="bg-muted rounded-2xl px-4 py-3">
-                            <div className="flex space-x-1">
-                              {[0, 0.15, 0.3].map((delay, i) => (
-                                <motion.div
-                                  key={i}
-                                  className="w-2 h-2 bg-muted-foreground/50 rounded-full"
-                                  animate={{ y: ["0%", "-50%", "0%"] }}
-                                  transition={{ duration: 0.6, repeat: Infinity, delay }}
-                                />
-                              ))}
-                            </div>
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                           </div>
                         </div>
-                      </motion.div>
+                      </div>
                     )}
 
                     <div ref={messagesEndRef} />
@@ -599,25 +688,18 @@ export default function UserDashboard() {
                 </div>
               </CardContent>
 
-              {/* Input Area */}
               <div className="flex-shrink-0 border-t p-4 z-10 bg-card rounded-b-xl">
                 <div className="flex gap-2">
                   <Input
                     ref={inputRef}
-                    id="chat-input"
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
                     onKeyDown={handleKeyPress}
-                    placeholder={
-                      isInCall
-                        ? "Voice call in progress — type here anytime"
-                        : "Tell me what service you need (e.g. haircut tomorrow afternoon)..."
-                    }
+                    placeholder="e.g. haircut tomorrow afternoon..."
                     className="flex-1 rounded-xl"
                     disabled={isTyping}
                   />
                   <Button
-                    id="chat-send-btn"
                     onClick={handleSendMessage}
                     disabled={!inputMessage.trim() || isTyping}
                     className="rounded-xl"
@@ -630,25 +712,67 @@ export default function UserDashboard() {
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2 text-center">
-                  Try: &quot;Book a massage for Saturday morning&quot; or &quot;I need a dentist appointment&quot;
+                  Multi-turn works — try &quot;haircut&quot; then &quot;tomorrow afternoon&quot;
                 </p>
               </div>
             </Card>
           </motion.div>
 
-          {/* Calendar Panel */}
           <motion.div
             initial={{ x: 50, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="lg:col-span-1 min-h-0 flex flex-col h-full"
+            className="lg:col-span-1 min-h-0 flex flex-col gap-4 h-full overflow-y-auto"
           >
-            <GoogleCalendarIntegration
-              userType="user"
-              onEventSync={(events) => {
-                console.log("[Dashboard] Calendar synced:", events.length, "events")
-              }}
-            />
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ListChecks className="h-4 w-4" />
+                  My bookings
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {myBookings.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No active bookings yet.</p>
+                ) : (
+                  myBookings.map((b) => (
+                    <div
+                      key={b._id}
+                      className="flex items-start justify-between gap-2 border rounded-lg p-2 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{b.service_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {b.date} · {b.time}
+                          {b.provider_name ? ` · ${b.provider_name}` : ""}
+                        </p>
+                        <Badge variant="outline" className="mt-1 text-[10px]">
+                          {b.status}
+                        </Badge>
+                      </div>
+                      {b.status === "confirmed" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive h-8 px-2"
+                          disabled={cancellingId === b._id}
+                          onClick={() => handleCancelBooking(b._id)}
+                        >
+                          {cancellingId === b._id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <XCircle className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="flex-1 min-h-[20rem]">
+              <BookingCalendar key={calendarKey} userType="user" />
+            </div>
           </motion.div>
         </div>
       </div>

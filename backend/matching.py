@@ -5,7 +5,7 @@ Service matching engine — filters and ranks services based on user intent
 
 import re
 from typing import List, Dict, Optional, Set, Tuple
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 
 # Category keyword map for intent → category matching
@@ -48,12 +48,13 @@ CATEGORY_MAP = {
     ],
 }
 
-# Day name to weekday index
-DAY_MAP = {
+WEEKDAY_NAMES = [
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
+]
+
+STATIC_DAY_MAP = {
     "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
     "friday": 4, "saturday": 5, "sunday": 6,
-    "today": date.today().weekday(),
-    "tomorrow": (date.today().weekday() + 1) % 7,
 }
 
 TIME_PERIOD_MAP = {
@@ -62,6 +63,37 @@ TIME_PERIOD_MAP = {
     "evening": ("17:00", "21:00"),
     "night": ("18:00", "22:00"),
 }
+
+
+def get_day_map() -> Dict[str, int]:
+    """Per-request day map so today/tomorrow stay accurate across midnight."""
+    today = date.today()
+    return {
+        **STATIC_DAY_MAP,
+        "today": today.weekday(),
+        "tomorrow": (today.weekday() + 1) % 7,
+    }
+
+
+def resolve_iso_date(date_str: Optional[str]) -> Optional[str]:
+    """Normalize relative day names to YYYY-MM-DD when possible."""
+    if not date_str:
+        return None
+    s = date_str.strip().lower()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+    today = date.today()
+    if s == "today":
+        return today.strftime("%Y-%m-%d")
+    if s == "tomorrow":
+        return (today + timedelta(days=1)).strftime("%Y-%m-%d")
+    if s in STATIC_DAY_MAP:
+        target = STATIC_DAY_MAP[s]
+        delta = (target - today.weekday()) % 7
+        if delta == 0:
+            delta = 7
+        return (today + timedelta(days=delta)).strftime("%Y-%m-%d")
+    return date_str
 
 
 def infer_category(service_type: Optional[str], specific_service: Optional[str]) -> Optional[str]:
@@ -82,33 +114,18 @@ def infer_category(service_type: Optional[str], specific_service: Optional[str])
 
 
 def extract_search_tags(service_type: Optional[str], specific_service: Optional[str]) -> List[str]:
-    """
-    Expand user intent into a full flat list of searchable tags.
-
-    Strategy:
-    1. Include the raw query words themselves.
-    2. Find the best-matching category in CATEGORY_MAP.
-    3. Include ALL keywords from that category — this ensures broad but
-       category-correct coverage without any LLM call.
-
-    Example: service_type="massage" →
-      matches "Wellness & Spa" → returns all 11 wellness keywords
-      + the raw word "massage"
-    """
+    """Expand user intent into a full flat list of searchable tags."""
     text = " ".join(filter(None, [service_type, specific_service])).lower().strip()
     if not text:
         return []
 
     tags: Set[str] = set()
 
-    # Include meaningful raw words from the query (skip filler words < 3 chars)
     for word in re.split(r"\s+", text):
         if len(word) >= 3:
             tags.add(word)
 
-    # Find ALL matching categories and include their full keyword sets
-    # (a query like "massage therapy" may hit both Wellness & Spa and Healthcare)
-    for category, keywords in CATEGORY_MAP.items():
+    for _category, keywords in CATEGORY_MAP.items():
         score = sum(1 for kw in keywords if kw in text)
         if score > 0:
             tags.update(kw.lower() for kw in keywords)
@@ -121,11 +138,9 @@ def parse_time_preference(time_str: Optional[str]) -> Optional[Tuple[str, str]]:
     if not time_str:
         return None
     t = time_str.lower().strip()
-    # Check time period keywords
     for period, bounds in TIME_PERIOD_MAP.items():
         if period in t:
             return bounds
-    # Try HH:MM pattern
     match = re.search(r"(\d{1,2}):?(\d{2})?\s*(am|pm)?", t)
     if match:
         hour = int(match.group(1))
@@ -146,7 +161,8 @@ def get_day_key(time_str: Optional[str]) -> Optional[str]:
     if not time_str:
         return None
     t = time_str.lower()
-    for day, _ in DAY_MAP.items():
+    day_map = get_day_map()
+    for day in day_map:
         if day in t:
             return day
     return None
@@ -159,47 +175,62 @@ def filter_by_availability(
 ) -> List[Tuple[Dict, List[str]]]:
     """
     Returns list of (provider, matching_slots) pairs.
-    Each provider has an `availability` dict keyed by day name.
+    Providers with no matching slots for a requested date/day are omitted.
     """
     time_bounds = parse_time_preference(time_str)
-    
+    iso_date = resolve_iso_date(date_str)
+
     day_key = get_day_key(time_str) or get_day_key(date_str)
-    
-    if date_str and re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+
+    if iso_date and re.match(r"^\d{4}-\d{2}-\d{2}$", iso_date):
         try:
-            dt = datetime.strptime(date_str, "%Y-%m-%d")
-            days_of_week = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
-            day_key = days_of_week[dt.weekday()]
+            dt = datetime.strptime(iso_date, "%Y-%m-%d")
+            day_key = WEEKDAY_NAMES[dt.weekday()]
         except ValueError:
             pass
 
+    date_or_day_requested = bool(iso_date or day_key or date_str)
     result = []
-    for provider in providers:
-        availability: Dict[str, List[str]] = provider.get("availability", {})
 
-        if date_str and date_str in availability:
-            slots = availability[date_str]
+    for provider in providers:
+        availability: Dict[str, List[str]] = provider.get("availability", {}) or {}
+
+        if iso_date and iso_date in availability:
+            slots = list(availability[iso_date] or [])
         elif day_key and day_key in availability:
-            slots = availability[day_key]
-        elif day_key or date_str:
-            # day requested but no slots for that day/date
+            slots = list(availability[day_key] or [])
+        elif date_or_day_requested:
             continue
         else:
-            # No day preference — collect all slots
             slots = []
             for day_slots in availability.values():
-                slots.extend(day_slots)
-            slots = list(set(slots))
-            slots.sort()
+                if isinstance(day_slots, list):
+                    slots.extend(day_slots)
+            slots = sorted(set(slots))
 
-        # Filter by time bounds
         if time_bounds and slots:
             start_t, end_t = time_bounds
             slots = [s for s in slots if start_t <= s <= end_t]
 
-        result.append((provider, slots[:5]))  # Max 5 slots shown
+        if date_or_day_requested and not slots:
+            continue
+
+        result.append((provider, slots[:5]))
 
     return result
+
+
+def _earliest_slot_minutes(slots: List[str]) -> int:
+    if not slots:
+        return 24 * 60
+    best = 24 * 60
+    for s in slots:
+        try:
+            h, m = s.split(":")
+            best = min(best, int(h) * 60 + int(m))
+        except (ValueError, AttributeError):
+            continue
+    return best
 
 
 def rank_results(
@@ -207,15 +238,15 @@ def rank_results(
     providers: List[Dict],
     intent: Dict,
     filtered_availability: Dict[str, List[str]],
+    priorities: Optional[List[str]] = None,
 ) -> List[Dict]:
     """
-    Rank service results by:
-    1. Provider name match (if specified)
-    2. Number of available slots
-    3. Provider rating
-    4. Category relevance
+    Rank service results using goal priorities / urgency.
+    Providers with zero slots are excluded when a date was requested.
     """
     provider_name_pref = (intent.get("provider_name") or "").lower()
+    date_requested = bool(intent.get("date"))
+    priorities = priorities or ["rating", "availability", "price"]
     scored = []
 
     for service in services:
@@ -225,20 +256,36 @@ def rank_results(
             continue
 
         slots = filtered_availability.get(pid, [])
-        # Relaxed constraint: display matching providers even if they haven't set up specific slot hours yet (ideal for newly registered providers)
+        if date_requested and not slots:
+            continue
 
         score = 0.0
-        # Provider name match
         if provider_name_pref and provider_name_pref in provider.get("name", "").lower():
             score += 10.0
-        # Rating (max 5)
-        score += provider.get("rating", 3.0)
-        # Slot count (more = better availability)
-        score += min(len(slots), 5) * 0.5
+
+        rating = float(provider.get("rating", 3.0))
+        price = float(service.get("price", 0) or 0)
+        slot_count = len(slots)
+        earliest = _earliest_slot_minutes(slots)
+
+        for i, pri in enumerate(priorities):
+            weight = max(3 - i, 1)
+            if pri == "rating":
+                score += rating * weight
+            elif pri == "availability":
+                score += min(slot_count, 5) * 0.5 * weight
+            elif pri == "earliest_slot":
+                score += max(0, (24 * 60 - earliest) / 60) * 0.3 * weight
+            elif pri == "price":
+                score += max(0, 100 - min(price, 100)) * 0.01 * weight
+
+        score += rating + min(slot_count, 5) * 0.25
 
         scored.append((score, service, provider, slots))
 
     scored.sort(key=lambda x: x[0], reverse=True)
+
+    resolved_date = resolve_iso_date(intent.get("date"))
 
     return [
         {
@@ -255,7 +302,7 @@ def rank_results(
             "rating": p.get("rating", 4.0),
             "description": s.get("description", ""),
             "tags": s.get("tags", []),
-            "date": intent.get("date"),
+            "date": resolved_date or intent.get("date"),
         }
-        for score, s, p, slots in scored[:5]  # Top 5 results
+        for score, s, p, slots in scored[:5]
     ]

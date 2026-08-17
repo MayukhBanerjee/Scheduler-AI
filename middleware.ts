@@ -26,7 +26,6 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/login", req.url));
     }
 
-    // Role-based: only providers can access /dashboard/client
     if (
       pathname.startsWith("/dashboard/client") &&
       session.role !== "provider"
@@ -34,7 +33,6 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/dashboard/user", req.url));
     }
 
-    // Role-based: only users can access /dashboard/user
     if (
       pathname.startsWith("/dashboard/user") &&
       session.role !== "user"
@@ -46,9 +44,8 @@ export async function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
+// Keep matcher narrow — broad regex matchers are a common cause of
+// "Cannot find the middleware module" after Next.js hot reloads.
 export const config = {
-  matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
-  ],
+  matcher: ["/dashboard/:path*", "/login", "/signup"],
 };

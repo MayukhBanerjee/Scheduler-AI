@@ -59,13 +59,17 @@ export async function registerUser(data: {
   const now = new Date();
 
   if (data.role === "provider") {
+    const location = data.location || "";
+    const category = data.category || "General";
     const result = await collection.insertOne({
       name: data.businessName || data.name,
       ownerName: data.name,
       email: data.email,
       passwordHash,
-      category: data.category || "General",
-      location: data.location || "",
+      category,
+      location,
+      location_lower: location.toLowerCase(),
+      search_tags: [],
       services: [],
       availability: {},
       rating: 5.0,

@@ -3,18 +3,21 @@ backend/models.py
 Pydantic data models for the Universal Service Booking AI System
 """
 
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Literal
 from pydantic import BaseModel, Field
-from datetime import datetime
 
 
-# ─── Request / Response Models ─────────────────────────────────────────────────
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
 
 class ChatRequest(BaseModel):
     message: str
     user_id: str
     user_role: str = "user"
     conversation_id: Optional[str] = None
+    messages: Optional[List[ChatMessage]] = Field(default=None, description="Prior turns for multi-turn intent merge")
 
 
 class ServiceResult(BaseModel):
@@ -42,16 +45,13 @@ class ChatResponse(BaseModel):
     intent: Optional[Dict] = None
 
 
-
-# ─── Agent State ──────────────────────────────────────────────────────────────
-
 class ExtractedIntent(BaseModel):
-    service_type: Optional[str] = None        # e.g. "haircut", "dental", "massage"
-    specific_service: Optional[str] = None    # exact name if mentioned
-    provider_name: Optional[str] = None       # if user specifies a provider
-    date: Optional[str] = None               # YYYY-MM-DD
-    time: Optional[str] = None               # HH:MM or "afternoon"
-    urgency: Optional[str] = None            # "urgent", "flexible", "soon"
+    service_type: Optional[str] = None
+    specific_service: Optional[str] = None
+    provider_name: Optional[str] = None
+    date: Optional[str] = None
+    time: Optional[str] = None
+    urgency: Optional[str] = None
     location: Optional[str] = None
     is_complete: bool = False
     missing_fields: List[str] = []

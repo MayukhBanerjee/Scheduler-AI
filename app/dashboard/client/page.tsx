@@ -31,7 +31,8 @@ import {
   Loader2,
 } from "lucide-react"
 import Link from "next/link"
-import { GoogleCalendarIntegration } from "@/components/google-calendar-integration"
+import { BookingCalendar } from "@/components/booking-calendar"
+import { useToast } from "@/hooks/use-toast"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -108,12 +109,14 @@ function StatusBadge({ status }: { status: Booking["status"] }) {
 
 export default function ClientDashboard() {
   const router = useRouter()
+  const { toast } = useToast()
   const [user, setUser] = useState<UserProfile | null>(null)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [isLoadingBookings, setIsLoadingBookings] = useState(true)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedView, setSelectedView] = useState<"day" | "week" | "month">("week")
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
+  const [bookingActionLoading, setBookingActionLoading] = useState(false)
   const [selectedDayOverride, setSelectedDayOverride] = useState<CalendarDay | null>(null)
   const [overrideInputTime, setOverrideInputTime] = useState("")
   const [calendarDays, setCalendarDays] = useState<CalendarDay[]>([])
@@ -211,14 +214,58 @@ export default function ClientDashboard() {
 
   const navigateMonth = (dir: "prev" | "next") => {
     const d = new Date(currentDate)
-    d.setMonth(currentDate.getMonth() + (dir === "next" ? 1 : -1))
+    if (selectedView === "day") {
+      d.setDate(currentDate.getDate() + (dir === "next" ? 1 : -1))
+    } else if (selectedView === "week") {
+      d.setDate(currentDate.getDate() + (dir === "next" ? 7 : -7))
+    } else {
+      d.setMonth(currentDate.getMonth() + (dir === "next" ? 1 : -1))
+    }
     setCurrentDate(d)
   }
 
+  const weekDays = (() => {
+    const start = new Date(currentDate)
+    start.setDate(currentDate.getDate() - currentDate.getDay())
+    start.setHours(12, 0, 0, 0)
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(start)
+      date.setDate(start.getDate() + i)
+      const dateStr = date.toISOString().split("T")[0]
+      const dayName = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][
+        date.getDay()
+      ]
+      const availability = profileForm?.availability || {}
+      const isOverride = Boolean(availability[dateStr])
+      const availableSlots = isOverride
+        ? availability[dateStr] || []
+        : availability[dayName] || []
+      const today = new Date()
+      return {
+        date,
+        bookings: bookings.filter((b) => b.date === dateStr && b.status !== "cancelled"),
+        isToday:
+          date.getDate() === today.getDate() &&
+          date.getMonth() === today.getMonth() &&
+          date.getFullYear() === today.getFullYear(),
+        isCurrentMonth: date.getMonth() === currentDate.getMonth(),
+        availableSlots,
+        isOverride,
+      } as CalendarDay
+    })
+  })()
+
+  const selectedDayStr = currentDate.toISOString().split("T")[0]
+  const dayBookings = bookings.filter(
+    (b) => b.date === selectedDayStr && b.status !== "cancelled"
+  )
+
   // Stats
   const today = new Date().toISOString().split("T")[0]
-  const todayBookings = bookings.filter((b) => b.date === today)
-  const upcomingBookings = bookings.filter((b) => b.date > today).slice(0, 5)
+  const todayBookings = bookings.filter((b) => b.date === today && b.status !== "cancelled")
+  const upcomingBookings = bookings
+    .filter((b) => b.date >= today && b.status !== "cancelled")
+    .slice(0, 5)
   const stats = {
     total: bookings.length,
     today: todayBookings.length,
@@ -242,12 +289,48 @@ export default function ClientDashboard() {
             body: JSON.stringify(profileForm)
         })
         if (res.ok) {
-            fetchProfile() // Refresh local state smoothly
+            fetchProfile()
+            toast({ title: "Saved", description: "Profile and availability updated." })
+        } else {
+            const data = await res.json().catch(() => ({}))
+            toast({
+              title: "Save failed",
+              description: data.error || "Could not update profile",
+              variant: "destructive",
+            })
         }
     } catch (err) {
         console.error(err)
+        toast({ title: "Save failed", description: "Network error", variant: "destructive" })
     } finally {
         setIsSavingProfile(false)
+    }
+  }
+
+  const handleBookingAction = async (action: "cancel" | "complete") => {
+    if (!selectedBooking) return
+    setBookingActionLoading(true)
+    try {
+      const res = await fetch(`/api/bookings/${selectedBooking._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        toast({ title: "Update failed", description: data.error, variant: "destructive" })
+      } else {
+        toast({
+          title: action === "cancel" ? "Cancelled" : "Completed",
+          description: action === "cancel" ? "Slot restored to availability." : "Marked complete.",
+        })
+        setSelectedBooking(null)
+        fetchBookings()
+      }
+    } catch {
+      toast({ title: "Update failed", description: "Network error", variant: "destructive" })
+    } finally {
+      setBookingActionLoading(false)
     }
   }
 
@@ -418,7 +501,7 @@ export default function ClientDashboard() {
 
         <Tabs defaultValue="calendar" className="w-full">
           <div className="flex justify-between items-center mb-6">
-            <TabsList className="grid w-[600px] grid-cols-3">
+            <TabsList className="grid w-full max-w-xl grid-cols-3 overflow-x-auto">
               <TabsTrigger value="calendar">Schedule & Bookings</TabsTrigger>
               <TabsTrigger value="availability">Availability</TabsTrigger>
               <TabsTrigger value="profile">Business Profile</TabsTrigger>
@@ -516,14 +599,17 @@ export default function ClientDashboard() {
 
                 {selectedView === "week" && (
                   <div className="grid grid-cols-7 gap-2">
-                    {calendarDays.slice(0, 7).map((day, i) => (
+                    {weekDays.map((day, i) => (
                       <motion.div
                         key={i}
                         initial={{ y: 10, opacity: 0 }}
                         animate={{ y: 0, opacity: 1 }}
                         transition={{ delay: i * 0.05 }}
                         className={`p-3 border rounded-lg cursor-pointer hover:bg-muted/10 transition-colors ${day.isToday ? "bg-primary/10 border-primary" : ""}`}
-                        onClick={() => setSelectedDayOverride(day)}
+                        onClick={() => {
+                          setCurrentDate(day.date)
+                          setSelectedDayOverride(day)
+                        }}
                       >
                         <div className="text-center mb-2">
                           <div className="text-xs text-muted-foreground">
@@ -560,8 +646,8 @@ export default function ClientDashboard() {
                     <h3 className="text-sm font-medium text-center text-muted-foreground">
                       {currentDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
                     </h3>
-                    {todayBookings.length > 0 ? (
-                      todayBookings.map((b) => (
+                    {dayBookings.length > 0 ? (
+                      dayBookings.map((b) => (
                         <motion.div
                           key={b._id}
                           whileHover={{ scale: 1.01 }}
@@ -583,7 +669,7 @@ export default function ClientDashboard() {
                     ) : (
                       <div className="text-center py-10 text-muted-foreground">
                         <Calendar className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                        <p className="text-sm">No bookings today</p>
+                        <p className="text-sm">No bookings on this day</p>
                       </div>
                     )}
                   </div>
@@ -599,11 +685,9 @@ export default function ClientDashboard() {
             transition={{ delay: 0.3 }}
             className="space-y-6"
           >
-            <GoogleCalendarIntegration
+            <BookingCalendar
               userType="client"
-              onEventSync={(events) => {
-                console.log("[Provider Dashboard] Calendar synced:", events.length, "events")
-              }}
+              onEventSync={() => {}}
             />
 
             {/* Upcoming bookings */}
@@ -883,9 +967,9 @@ export default function ClientDashboard() {
                       <p className="font-medium">{selectedBooking.duration_minutes} min</p>
                     </div>
                     <div>
-                      <p className="text-muted-foreground text-xs">Calendar</p>
-                      <p className="font-medium text-xs">
-                        {selectedBooking.google_event_id_user ? "✅ Synced" : "—"}
+                      <p className="text-muted-foreground text-xs">Customer</p>
+                      <p className="font-medium text-xs truncate">
+                        {selectedBooking.user_email}
                       </p>
                     </div>
                   </div>
@@ -896,6 +980,31 @@ export default function ClientDashboard() {
                       <span>{selectedBooking.user_email}</span>
                     </div>
                   </div>
+
+                  {selectedBooking.status === "confirmed" && (
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        className="flex-1"
+                        variant="outline"
+                        disabled={bookingActionLoading}
+                        onClick={() => handleBookingAction("complete")}
+                      >
+                        {bookingActionLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "Complete"
+                        )}
+                      </Button>
+                      <Button
+                        className="flex-1"
+                        variant="destructive"
+                        disabled={bookingActionLoading}
+                        onClick={() => handleBookingAction("cancel")}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>

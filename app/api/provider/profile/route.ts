@@ -33,7 +33,12 @@ export async function PUT(req: Request) {
     const body = await req.json();
     const { name, category, location, rating, services } = body;
 
-    const servicesArray: Array<{ name?: string; tags?: string[] }> = Array.isArray(services) ? services : [];
+    const rawServices: Array<Record<string, unknown>> = Array.isArray(services) ? services : [];
+    // Assign stable service ids ({providerId}:{index}) so bookings can resolve them
+    const servicesArray: Array<Record<string, unknown> & { id: string }> = rawServices.map((svc, i) => ({
+      ...svc,
+      id: typeof svc.id === "string" && svc.id.includes(":") ? svc.id : `${session.userId}:${i}`,
+    }));
 
     // ── Auto-compute search_tags from services + category ──────────────────
     // Mirrors the logic in seed_db.py so live providers are immediately
@@ -56,8 +61,10 @@ export async function PUT(req: Request) {
     (CATEGORY_TAG_MAP[category] ?? []).forEach((t: string) => tagSet.add(t.toLowerCase()));
     // 2. Per-service tags + meaningful words from service names
     for (const svc of servicesArray) {
-      (svc.tags ?? []).forEach((t: string) => tagSet.add(t.toLowerCase().trim()));
-      (svc.name ?? "").toLowerCase().split(/\s+/).forEach((w: string) => {
+      const tags = Array.isArray(svc.tags) ? (svc.tags as string[]) : [];
+      tags.forEach((t: string) => tagSet.add(String(t).toLowerCase().trim()));
+      const nameStr = typeof svc.name === "string" ? svc.name : "";
+      nameStr.toLowerCase().split(/\s+/).forEach((w: string) => {
         if (w.length >= 4 && !STOP_WORDS.has(w)) tagSet.add(w);
       });
     }

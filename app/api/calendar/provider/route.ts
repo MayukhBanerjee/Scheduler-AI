@@ -19,6 +19,7 @@ export async function GET() {
       .find({
         provider_id: new ObjectId(session.userId),
         date: { $gte: todayStr },
+        status: { $ne: "cancelled" },
       })
       .sort({ date: 1, time: 1 })
       .limit(30)

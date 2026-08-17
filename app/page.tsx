@@ -103,8 +103,8 @@ export default function LandingPage() {
 
           <ScrollReveal delay={0.6}>
             <p className="text-xl text-muted-foreground text-pretty max-w-2xl">
-              Transform your booking experience with intelligent chat and voice assistants. Let AI handle scheduling
-              while you focus on what matters most.
+              Transform booking with conversational AI and optional voice input. Verified availability,
+              dual dashboards, and a ScheduleAI calendar — no fake slots.
             </p>
           </ScrollReveal>
 
@@ -323,9 +323,11 @@ export default function LandingPage() {
                   </Button>
                 </motion.div>
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button variant="outline" size="lg" className="text-lg px-8 py-6 bg-transparent">
-                    Contact Sales
-                  </Button>
+                  <Link href="/signup?role=provider">
+                    <Button variant="outline" size="lg" className="text-lg px-8 py-6 bg-transparent">
+                      For Businesses
+                    </Button>
+                  </Link>
                 </motion.div>
               </div>
             </CardContent>
@@ -412,29 +414,32 @@ export default function LandingPage() {
 }
 
 
-const features = [
+const features: Array<{
+  icon: typeof MessageSquare
+  title: string
+  description: string
+  inProgress?: boolean
+}> = [
   {
     icon: MessageSquare,
     title: "AI Chat Assistant",
     description:
-      "Natural language booking through intelligent chat conversations that understand context and preferences.",
+      "Natural language booking through intelligent multi-turn chat that understands context and preferences.",
   },
   {
     icon: Phone,
-    title: "Voice Booking",
-    description: "Call and speak naturally to book appointments. Our AI understands speech and responds in real-time.",
-    inProgress: true,
+    title: "Voice Input",
+    description: "Speak your request with browser mic input (Chrome/Edge). Transcripts fill chat for AI booking.",
   },
   {
     icon: Calendar,
-    title: "Smart Calendar Sync",
-    description: "Seamless integration with Google Calendar for both clients and users with real-time synchronization.",
-    inProgress: true,
+    title: "ScheduleAI Calendar",
+    description: "Internal booking calendar for customers and providers — verified slots, no hallucinated times.",
   },
   {
     icon: Clock,
-    title: "24/7 Availability",
-    description: "Your AI assistant never sleeps. Customers can book appointments anytime, anywhere.",
+    title: "Live Availability",
+    description: "Provider availability drives every suggestion. Booked slots are consumed instantly.",
   },
   {
     icon: Users,
@@ -444,7 +449,7 @@ const features = [
   {
     icon: Zap,
     title: "Instant Confirmations",
-    description: "Real-time booking confirmations with automatic calendar updates and notifications.",
+    description: "Confirm bookings in chat and see them update on both dashboards immediately.",
   },
 ]
 
@@ -454,11 +459,11 @@ const steps = [
     description: "Sign up as a customer looking to book services or as a business offering appointments.",
   },
   {
-    title: "Connect Your Calendar",
-    description: "Link your Google Calendar for seamless scheduling and automatic synchronization.",
+    title: "Set Availability",
+    description: "Providers configure weekly hours and date overrides. Customers open the AI chat.",
   },
   {
-    title: "Start Booking",
-    description: "Use chat or voice to book appointments naturally. Our AI handles the rest.",
+    title: "Chat or Speak to Book",
+    description: "Describe what you need — or use the mic — and book a verified slot in seconds.",
   },
 ]

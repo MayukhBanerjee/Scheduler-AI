@@ -1,136 +1,129 @@
-# 🗓️ ScheduleAI - Universal Service Booking Engine
+# ScheduleAI — Universal Service Booking Engine
 
-ScheduleAI is an enterprise-grade, full-stack Universal Service Booking platform powered by Generative AI. It radically transforms how businesses acquire bookings and how users discover services, doing away with complex dropdowns and messy web-pages in favor of **natural conversational logic**.
-
-The system utilizes a powerful **LangGraph AI Agent** (powered by Google Gemini) paired with a deeply integrated, highly dynamic **Embedded MongoDB State**. 
+ScheduleAI is a full-stack conversational booking platform. Customers discover and book local services through natural language (and optional voice input). Providers manage services and availability from a dedicated dashboard. A **LangGraph** agent (Gemini) parses intent and phrases replies; retrieval, ranking, and availability are **deterministic Python** over MongoDB `search_tags`.
 
 ---
 
-## 🌟 Comprehensive Feature Set
+## Features
 
-### 1. Generative AI Chat & Booking Orchestration
-- **Contextual Understanding:** Clients simply type what they need (e.g. *"I need a dental checkup and a deep cleaning on Friday"*). ScheduleAI understands the context, filters the raw intent, and extracts the parameters natively.
-- **Dynamic Retrieval (LangGraph):** The agent dynamically searches all real-time providers via a custom MongoDB `$elemMatch` strategy inside an embedded Business profiles array, retrieving precisely matching businesses and returning them seamlessly over the UI as interactive Service Cards.
+### AI chat booking
+- Multi-turn clarification (e.g. “haircut” → “tomorrow afternoon”)
+- Tag-indexed provider search (`search_tags: { $in: [...] }`)
+- Verified slots only — no hallucinated availability
+- Conflict-safe bookings with slot consumption
 
-### 2. Dual-Faced Unified Dashboards
-- **Customer Portal:** Dedicated contextual dashboard where authenticated users interact with the Chat AI, view active booking suggestions, review real-time booking history, and cancel or reschedule previous bookings.
-- **Service Provider Hub:** Complete isolation and independence. Providers get their own dashboard granting them maximum control over their business payload. 
+### Dual dashboards
+- **Customer:** AI chat, Web Speech mic → chat (Chrome/Edge), ScheduleAI calendar, cancel bookings
+- **Provider:** profile, services, availability overrides, calendar (month/week/day), cancel/complete bookings
 
-### 3. "Embedded State" Business Profile System
-Instead of archaic relational tables that slow down compute speeds:
-- Providers possess an **Unlimited Array State** fully serialized within their core Database Document.
-- From the Dashboard UI, a single provider can create an unlimited number of discrete `services` (e.g., *Haircut `[Tags: Men, Styling]`, Bridging `[Tags: Dental]`*) natively editing prices and descriptions independently.
-- **Zero API lag:** The AI queries the MongoDB documents in linear, raw execution natively un-packing the exact service from inside the larger JSON document. 
+### Calendar
+- Internal Mongo-backed booking calendar for both roles
+- Voice input via browser **Web Speech API** (no server STT)
+- Google Calendar OAuth sync is **out of scope** for the current ship
 
 ---
 
-## 🏗️ System Architecture & Workflow
+## Architecture
 
 ```mermaid
 graph TD;
-    A[Customer Chat UI] -->|Sends Intent String| B(POST /api/chat);
-    B --> C{LangGraph Network};
-    C -->|Node 1: Parse Intent| D(Query Builder);
-    C -->|Node 2: Missing Data| E(Request Clarification);
-    D -->|$elemMatch MongoDB| F[(Atlas Database)];
-    F -->|Return Embedded Services| G[LangGraph Ranker];
-    G -->|Filters & Sorts| H[Return Service Cards to UI];
-    H -->|User clicks 'Book'| I(POST /api/bookings);
-    I --> F;
+    A[Customer Chat UI] -->|JWT| B(POST /api/chat);
+    B -->|X-API-Key| C[FastAPI /chat];
+    C --> D[LangGraph 6-node agent];
+    D -->|search_tags $in| E[(MongoDB)];
+    D --> F[Service cards + reply];
+    F -->|User books slot| G(POST /api/bookings);
+    G --> E;
 ```
 
 ---
 
-## 📁 Source Code Directory Structure
+## Local setup
 
-The repository is mapped as a decoupled full-stack architecture separated strictly into `frontend` (Next.js) and `backend` (FastAPI).
+### 1. Environment
 
-```bash
-Scheduler-AI/
-├── app/                        # Next.js App Router (Frontend)
-│   ├── api/                    # UI Endpoints (Bridges to FastAPI/MongoDB)
-│   │   ├── auth/               # Custom JWT Login/Register/Logout Auth
-│   │   ├── bookings/           # Booking Creation & Ledger retrieval
-│   │   ├── chat/               # LangGraph Proxy Fetch Handler
-│   │   └── provider/profile/   # Unified Embedded Service Profile Upserts
-│   ├── dashboard/              # Protected Dashboards
-│   │   ├── client/             # Service Provider Admin View
-│   │   └── user/               # Customer AI Chat View
-│   └── page.tsx                # Beautiful Landing Page & Marketing Hero
-├── backend/                    # Python FastAPI (Microservice)
-│   ├── main.py                 # FastAPI Server Initialization
-│   ├── agent.py                # 6-Node LangGraph Orchestration & AI Logic
-│   ├── database.py             # Motor AsyncDB connections
-│   ├── models.py               # Pydantic Schemas & Type validations
-│   └── seed_db.py              # Sandbox Environment Initializer
-├── components/                 # React UI Elements
-│   ├── ui/                     # Shadcn UI (Buttons, Cards, Inputs, Tabs)
-│   └── service-card.tsx        # Dynamic Render for AI Search Results
-├── lib/                        # Configurations
-│   ├── auth.ts                 # Custom JWT Signature Handlers
-│   └── mongodb.ts              # Native Mongo Client instances
-├── public/                     # Static Assests (Developer Profiles)
-└── .env.local                  # Environment Configuration
-```
-
----
-
-## 🚀 Local Development Configuration
-
-Setting up the project requires spinning up the decoupled layers concurrently over individual local server threads.
-
-### 1. Environment Configurations
-You must construct two `.env` files. Ensure you have an active MongoDB Atlas cluster and a Google AI Studio account.
-
-**Root Next.js Layer (`.env.local`):**
+**Root `.env.local`** (see `.env.example`):
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB_NAME=scheduleai
+JWT_SECRET=change-me-to-a-long-random-string
+BACKEND_URL=http://localhost:8000
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+BACKEND_API_KEY=change-me-shared-api-key
 ```
-**Python Backend Layer (`backend/.env`):**
+
+**`backend/.env`** (see `backend/.env.example`):
 ```env
 GEMINI_API_KEY=your_gemini_api_key
-MONGODB_URI=your_mongodb_cluster_string
+MONGODB_URI=mongodb://localhost:27017
 MONGODB_DB_NAME=scheduleai
+BACKEND_API_KEY=change-me-shared-api-key
 ```
 
-### 2. Dependency Installation
+`BACKEND_API_KEY` must match on both sides.
 
-**Front-End Node Dependencies:**
+### 2. Install
+
 ```bash
-# In the root repository
 npm install
-```
 
-**Back-End Python Dependencies:**
-```bash
 cd backend
 python -m venv venv
-
-# Activate the venv
-.\venv\Scripts\activate      # Windows PowerShell
-source venv/bin/activate     # Mac/Linux Bash
-
+.\venv\Scripts\activate      # Windows
+# source venv/bin/activate  # Mac/Linux
 pip install -r requirements.txt
 ```
 
-### 3. Initialize & Seed Platform Database
-Before booting the dashboard, you must configure the database structure by natively wiping the legacy architecture and mapping mock provider objects to start matching logic.
+### 3. Seed
+
 ```bash
-# Inside the backend folder with VENV activated
+cd backend
 python seed_db.py
 ```
 
-### 4. Running the Platform
-A powerful execution script (`start_servers.ps1`) is bundled in the root. Running this securely spins up both the **Next.js Frontend (`localhost:3000`)** and the **FastAPI Backend (`localhost:8000`)** concurrently.
+Demo accounts (password `demo1234`):
+- Customer: `demo@scheduleai.com`
+- Providers: e.g. `thestylestudio@demo.com`, `citydentalclinic@demo.com`
+
+### 4. Run
+
 ```bash
-# In the root repository
 .\start_servers.ps1
+```
+
+- Frontend: http://localhost:3000  
+- Backend: http://localhost:8000  
+
+---
+
+## Directory map
+
+```
+Scheduler-AI/
+├── app/                 # Next.js App Router
+├── backend/             # FastAPI + LangGraph agent
+├── components/          # UI (shadcn + booking calendar)
+├── lib/                 # JWT auth, Mongo client
+└── start_servers.ps1    # Dev bootstrap
 ```
 
 ---
 
-## 👥 Developers & Contributors
+## Demo acceptance checklist
 
-Architected perfectly by:
-* **Mayukh Banerjee** - [GitHub](https://github.com/MayukhBanerjee) | [LinkedIn](https://www.linkedin.com/in/mayukh-banerjee)
-* **Naif Naqeeb** - [GitHub](https://github.com/naifnaqeeb) | [LinkedIn](https://www.linkedin.com/in/naifnaqeeb/)
+After `python seed_db.py` and `.\start_servers.ps1`:
+
+1. Login `demo@scheduleai.com` / `demo1234` → customer dashboard  
+2. Chat “I need a haircut” → clarify → “tomorrow afternoon” → real slots  
+3. Book a slot → appears on My bookings + ScheduleAI calendar  
+4. Book the same slot again → conflict error  
+5. Provider login → cancel/complete booking in modal  
+6. Mic in Chrome/Edge → transcript fills chat  
+7. Landing “I’m a Business” → signup role `provider`  
+8. `curl` FastAPI `/chat` without `X-API-Key` → 401 (when `BACKEND_API_KEY` is set)
+
+See also [DEPLOY.md](DEPLOY.md) for optional hosting.
+
+
+- **Mayukh Banerjee** — [GitHub](https://github.com/MayukhBanerjee) | [LinkedIn](https://www.linkedin.com/in/mayukh-banerjee)
+- **Naif Naqeeb** — [GitHub](https://github.com/naifnaqeeb) | [LinkedIn](https://www.linkedin.com/in/naifnaqeeb/)
