@@ -75,7 +75,7 @@ export function CustomerSidebar({
     >
       {/* Sidebar Brand Header */}
       <div>
-        <div className="h-18 flex items-center justify-between px-4 border-b border-orange-100 dark:border-stone-800">
+        <div className="h-16 shrink-0 flex items-center justify-between px-4 border-b border-orange-100 dark:border-stone-800">
           <Link href="/" className="flex items-center gap-3 overflow-hidden">
             <div className="h-9 w-9 shrink-0 rounded-xl bg-gradient-to-tr from-[#b02f00] to-[#ff5722] flex items-center justify-center text-white shadow-md shadow-orange-500/20">
               <CalendarIcon className="h-5 w-5" />

@@ -440,7 +440,7 @@ export default function UserDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fff8f4] dark:bg-stone-950 text-stone-900 dark:text-stone-100 flex relative selection:bg-orange-500/20 selection:text-[#b02f00] font-sans antialiased overflow-x-hidden">
+    <div className="h-screen max-h-screen w-screen overflow-hidden flex bg-[#fff8f4] dark:bg-stone-950 text-stone-900 dark:text-stone-100 relative selection:bg-orange-500/20 selection:text-[#b02f00] font-sans antialiased">
       {/* Background Ambient Wave */}
       <div className="wavy-bg fixed inset-0 pointer-events-none -z-10 opacity-70" />
 
@@ -456,7 +456,7 @@ export default function UserDashboard() {
 
       {/* ─── 2. Main Workspace Layout ──────────────────────────────────── */}
       <div
-        className="flex-1 flex flex-col min-w-0 transition-all duration-300"
+        className="flex-1 h-screen max-h-screen flex flex-col min-w-0 overflow-hidden transition-all duration-300"
         style={{ marginLeft: sidebarCollapsed ? 80 : 256 }}
       >
         {/* Modular Top Header */}
@@ -467,7 +467,7 @@ export default function UserDashboard() {
         />
 
         {/* Dynamic Views */}
-        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 min-h-0 overflow-hidden p-3.5 sm:p-4 w-full flex flex-col">
           {activeTab === "ai-schedule" && (
             <AISchedulerView
               messages={messages}
@@ -493,28 +493,40 @@ export default function UserDashboard() {
           )}
 
           {activeTab === "discover" && (
-            <DiscoverView
-              category={discoveryCategory}
-              onCategoryChange={setDiscoveryCategory}
-              search={discoverySearch}
-              onSearchChange={setDiscoverySearch}
-              providers={filteredProviders}
-              onBookWithAI={handleSendMessage}
-            />
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <DiscoverView
+                category={discoveryCategory}
+                onCategoryChange={setDiscoveryCategory}
+                search={discoverySearch}
+                onSearchChange={setDiscoverySearch}
+                providers={filteredProviders}
+                onBookWithAI={handleSendMessage}
+              />
+            </div>
           )}
 
           {activeTab === "bookings" && (
-            <BookingsView
-              bookings={myBookings}
-              onNewBooking={() => setActiveTab("ai-schedule")}
-              onCancelBooking={handleCancelBooking}
-              cancellingId={cancellingId}
-            />
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <BookingsView
+                bookings={myBookings}
+                onNewBooking={() => setActiveTab("ai-schedule")}
+                onCancelBooking={handleCancelBooking}
+                cancellingId={cancellingId}
+              />
+            </div>
           )}
 
-          {activeTab === "calendar" && <CalendarView calendarKey={calendarKey} />}
+          {activeTab === "calendar" && (
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <CalendarView calendarKey={calendarKey} />
+            </div>
+          )}
 
-          {activeTab === "analytics" && <AnalyticsView bookings={myBookings} />}
+          {activeTab === "analytics" && (
+            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <AnalyticsView bookings={myBookings} />
+            </div>
+          )}
         </main>
       </div>
     </div>

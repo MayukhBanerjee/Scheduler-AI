@@ -25,7 +25,7 @@ export function CustomerHeader({ activeTabLabel, user, onLogout }: CustomerHeade
   }
 
   return (
-    <header className="sticky top-0 z-30 h-18 bg-white/70 dark:bg-stone-950/70 backdrop-blur-xl border-b border-orange-200/50 dark:border-stone-800 flex items-center justify-between px-6 sm:px-10">
+    <header className="sticky top-0 z-30 h-16 shrink-0 bg-white/70 dark:bg-stone-950/70 backdrop-blur-xl border-b border-orange-200/50 dark:border-stone-800 flex items-center justify-between px-5 sm:px-8">
       {/* Active Tab Title */}
       <div className="flex items-center gap-3">
         <h1 className="text-lg sm:text-xl font-extrabold text-stone-900 dark:text-stone-100 tracking-tight">

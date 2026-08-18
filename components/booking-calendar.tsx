@@ -189,27 +189,27 @@ export function BookingCalendar({
       : null
 
   return (
-    <div className="glass-card rounded-[2rem] p-5 sm:p-6 flex flex-col h-full bg-white/70 dark:bg-stone-900/70 backdrop-blur-xl border border-white/60 dark:border-stone-800 shadow-[0_4px_30px_rgba(0,0,0,0.04)]">
+    <div className="glass-card rounded-[1.75rem] p-3.5 flex flex-col h-full min-h-0 bg-white/70 dark:bg-stone-900/70 backdrop-blur-xl border border-white/60 dark:border-stone-800 shadow-[0_4px_30px_rgba(0,0,0,0.04)] overflow-hidden">
       {/* Calendar Header */}
-      <div className="pb-3.5 border-b border-orange-100/60 dark:border-stone-800 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-orange-500/15 text-[#b02f00] dark:text-orange-400 flex items-center justify-center shadow-xs">
-            <CalendarIcon className="h-5 w-5" />
+      <div className="pb-2.5 border-b border-orange-100/60 dark:border-stone-800 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-orange-500/15 text-[#b02f00] dark:text-orange-400 flex items-center justify-center shadow-xs shrink-0">
+            <CalendarIcon className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="font-extrabold text-base text-stone-900 dark:text-stone-100 leading-tight">
+            <h3 className="font-extrabold text-sm text-stone-900 dark:text-stone-100 leading-tight">
               ScheduleAI Calendar
             </h3>
             {mounted && lastSync && (
-              <p className="text-[11px] font-medium text-stone-400 mt-0.5">
-                Last synced:{" "}
+              <p className="text-[10px] font-medium text-stone-400">
+                Synced:{" "}
                 {lastSync.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
               </p>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {isConnected && (
             <Button
               id="calendar-sync-btn"
@@ -217,9 +217,9 @@ export function BookingCalendar({
               size="sm"
               onClick={handleSync}
               disabled={isLoading}
-              className="rounded-full px-3 h-8 text-xs font-bold border-orange-200/70 dark:border-stone-700 bg-white/60 dark:bg-stone-800 hover:bg-orange-50 text-stone-700 dark:text-stone-300"
+              className="rounded-full px-2.5 h-7 text-[11px] font-bold border-orange-200/70 dark:border-stone-700 bg-white/60 dark:bg-stone-800 hover:bg-orange-50 text-stone-700 dark:text-stone-300"
             >
-              <RefreshCw className={`h-3.5 w-3.5 mr-1 text-[#b02f00] ${isLoading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-3 w-3 mr-1 text-[#b02f00] ${isLoading ? "animate-spin" : ""}`} />
               Sync
             </Button>
           )}
@@ -234,7 +234,7 @@ export function BookingCalendar({
               >
                 <Badge
                   variant={statusBadgeVariant}
-                  className={`text-[10px] ${syncStatus === "syncing" ? "animate-pulse" : ""}`}
+                  className={`text-[9px] px-1.5 py-0 ${syncStatus === "syncing" ? "animate-pulse" : ""}`}
                 >
                   {statusLabel}
                 </Badge>
@@ -244,9 +244,9 @@ export function BookingCalendar({
         </div>
       </div>
 
-      <CardContent className="flex-1 flex flex-col p-4 overflow-hidden gap-4">
+      <div className="flex-1 min-h-0 flex flex-col p-0 pt-2 overflow-hidden gap-2">
         {/* Full Interactive Calendar UI */}
-        <div className="flex justify-center border rounded-xl overflow-hidden bg-muted/10 pb-2">
+        <div className="flex justify-center border border-orange-100/60 dark:border-stone-800 rounded-xl overflow-hidden bg-white/50 dark:bg-stone-950/50 py-0.5 shrink-0 scale-95 origin-top">
           <Calendar
             mode="single"
             selected={selectedDate}
@@ -260,11 +260,11 @@ export function BookingCalendar({
         </div>
 
         {/* Schedule List Area below Calendar */}
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between mb-2 pb-1 border-b pointer-events-none">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" />
-              <span className="text-sm font-medium">
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between mb-1 pb-1 border-b border-orange-100/60 dark:border-stone-800 pointer-events-none shrink-0">
+            <div className="flex items-center gap-1.5">
+              <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+              <span className="text-xs font-semibold">
                 {mounted && selectedDate
                   ? `Events on ${selectedDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
                   : "Upcoming Schedule"}
@@ -272,7 +272,7 @@ export function BookingCalendar({
             </div>
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 min-h-0">
             <AnimatePresence>
               {displayedEvents.length > 0 ? (
                 <div className="space-y-2 pr-4 pb-2">
@@ -333,7 +333,7 @@ export function BookingCalendar({
             </AnimatePresence>
           </ScrollArea>
         </div>
-      </CardContent>
+      </div>
     </div>
   )
 }
