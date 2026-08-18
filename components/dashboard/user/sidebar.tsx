@@ -163,8 +163,26 @@ export function CustomerSidebar({
         </nav>
       </div>
 
-      {/* Sidebar Footer User Profile */}
-      <div className="p-3 border-t border-orange-100 dark:border-stone-800">
+      {/* Sidebar Footer User Profile & Quick Action */}
+      <div className="p-3 border-t border-orange-100 dark:border-stone-800 space-y-2.5">
+        {!collapsed ? (
+          <Link
+            href="/dashboard/user"
+            className="w-full py-2.5 px-4 bg-gradient-to-r from-[#b02f00] to-[#ff5722] hover:from-[#902700] hover:to-[#e64a19] text-white font-bold text-xs rounded-full shadow-md shadow-orange-500/25 flex items-center justify-center gap-1.5 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span>Book Now</span>
+          </Link>
+        ) : (
+          <Link
+            href="/dashboard/user"
+            title="Book Now with AI"
+            className="w-9 h-9 mx-auto rounded-full bg-gradient-to-r from-[#b02f00] to-[#ff5722] text-white flex items-center justify-center shadow-md shadow-orange-500/25 cursor-pointer hover:scale-105 transition-transform"
+          >
+            <Sparkles className="h-4 w-4" />
+          </Link>
+        )}
+
         <div
           className={`flex items-center gap-2.5 p-2 rounded-2xl bg-orange-50/60 dark:bg-stone-800/50 ${
             collapsed ? "justify-center" : ""
