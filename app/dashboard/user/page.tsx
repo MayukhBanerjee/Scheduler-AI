@@ -518,7 +518,14 @@ export default function UserDashboard() {
 
           {activeTab === "calendar" && (
             <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-              <CalendarView calendarKey={calendarKey} />
+              <CalendarView
+                calendarKey={calendarKey}
+                onNewEvent={() => setActiveTab("ai-schedule")}
+                onResolveConflict={(prompt) => {
+                  setActiveTab("ai-schedule")
+                  handleSendMessage(prompt)
+                }}
+              />
             </div>
           )}
 
