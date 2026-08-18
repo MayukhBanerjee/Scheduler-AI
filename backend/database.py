@@ -82,6 +82,7 @@ async def find_providers_by_tags(
     """
     sb = get_supabase()
 
+    # Tier 1: Exact search with tags, category, and specific location
     result = sb.rpc(
         "search_providers_by_tags",
         {
@@ -94,6 +95,34 @@ async def find_providers_by_tags(
     ).execute()
 
     providers = result.data or []
+
+    # Tier 2: If 0 results and location was specified, expand search city-wide (drop location constraint)
+    if not providers and location_lower:
+        result_citywide = sb.rpc(
+            "search_providers_by_tags",
+            {
+                "p_tags": tags,
+                "p_category": category,
+                "p_location_like": None,
+                "p_provider_name": provider_name,
+                "p_limit": limit,
+            },
+        ).execute()
+        providers = result_citywide.data or []
+
+    # Tier 3: If still 0 results and category is known, fetch top providers in that category
+    if not providers and category:
+        result_cat = sb.rpc(
+            "search_providers_by_tags",
+            {
+                "p_tags": [],
+                "p_category": category,
+                "p_location_like": None,
+                "p_provider_name": provider_name,
+                "p_limit": limit,
+            },
+        ).execute()
+        providers = result_cat.data or []
 
     # For each provider, fetch their embedded services so the agent can expand them
     enriched = []

@@ -97,25 +97,29 @@ class AgentState(TypedDict):
     clarification_question: Optional[str]
 
 
-INTENT_SYSTEM_PROMPT = """You are an intent extraction AI for a service booking system.
+INTENT_SYSTEM_PROMPT = """You are an expert intent extraction AI for ScheduleAI, a multi-category service booking platform.
 
 Today's date is {today}.
 
-Merge the conversation history with the latest user message into ONE complete intent.
-If an earlier turn mentioned a service (e.g. "haircut") and the latest turn only adds date/time
-(e.g. "tomorrow afternoon"), keep the service_type from history and fill in the new fields.
+CRITICAL CONVERSATION CONTEXT RULES:
+1. DISTINGUISH BETWEEN SLOT REFINEMENT vs TOPIC SWITCH:
+   - SLOT REFINEMENT: If the user is continuing the SAME service (e.g. Turn 1: "I need a haircut", Turn 2: "tomorrow at 3pm"), KEEP the service and add the date/time/location.
+   - TOPIC SWITCH / NEW REQUEST: If the user asks for a DIFFERENT service, category, or new request (e.g. Turn 1: "dentist in Indiranagar", Turn 2: "I need a lawyer meetup too", Turn 3: "what about tuition classes?", Turn 4: "I need something to do with education"):
+     -> This is a NEW booking goal!
+     -> RESET the previous service!
+     -> RESET the previous location to null, unless the user explicitly re-specifies the location in their latest message!
 
-Extract (return null if unknown after merging history):
-- service_type: type of service (e.g. "haircut", "dental checkup", "massage")
-- specific_service: exact service name if very specific
-- provider_name: specific business or person name if mentioned
-- date: YYYY-MM-DD preferred (resolve "today"/"tomorrow"/weekday names relative to {today}), or day name
-- time: "3pm", "morning", "afternoon", or HH:MM
-- urgency: "urgent", "soon", or "flexible"
-- location: city or area
+2. SERVICE EXTRACTION & SYNONYMS:
+   - service_type: The general domain (e.g. "lawyer", "dentist", "tuition", "education", "haircut", "massage", "doctor", "fitness trainer", "ac service")
+   - specific_service: Specific topic/procedure if mentioned (e.g. "teeth cleaning", "lawyer meetup", "trademark filing", "coding class", "python mentorship", "swedish massage", "physician checkup")
+   - provider_name: Business name or person name if mentioned (e.g. "City Dental Clinic", "The Style Studio", "Vanguard Legal")
+   - date: YYYY-MM-DD (resolve "today", "tomorrow", or weekday names relative to {today})
+   - time: "morning", "afternoon", "evening", or specific time like "2pm", "14:00"
+   - urgency: "urgent", "soon", or "flexible"
+   - location: Specific neighborhood or area (ONLY if explicitly mentioned for the CURRENT service)
 
-Return ONLY a valid JSON object. No markdown, no explanation.
-Example: {{"service_type": "haircut", "date": "2026-04-13", "time": "afternoon", "urgency": "flexible", "provider_name": null, "specific_service": null, "location": null}}
+Return ONLY a valid JSON object matching the schema. No markdown code blocks, no explanation.
+Example: {{"service_type": "lawyer", "specific_service": "lawyer meetup", "provider_name": null, "date": null, "time": null, "urgency": "flexible", "location": null}}
 """
 
 
@@ -212,8 +216,6 @@ def node_goal_framer(state: AgentState) -> AgentState:
         }
 
     category = infer_category(intent.get("service_type"), intent.get("specific_service"))
-    if not category:
-        category = "General"
 
     filters = {}
     if intent.get("location"):
@@ -389,21 +391,30 @@ def node_response_generator(state: AgentState) -> AgentState:
     ranked = state.get("ranked_results") or []
     intent = state.get("intent") or {}
     service_type = intent.get("specific_service") or intent.get("service_type") or "services"
-    loc = intent.get("location") or ""
-    loc_str = f" in {loc}" if loc else ""
+    user_loc = (intent.get("location") or "").strip()
 
     if ranked:
         top_provider = ranked[0]
         p_name = top_provider.get("provider_name", "verified provider")
+        p_loc = top_provider.get("location", "")
         date_val = top_provider.get("date", "")
         date_str = f" for {date_val}" if date_val else ""
 
-        response_text = (
-            f"I found top-rated {service_type}{loc_str}{date_str}! "
-            f"Here are the available booking slots with {p_name} and other matching providers below. "
-            f"Tap any slot to confirm your booking instantly:"
-        )
+        # Context-aware location handling
+        if user_loc and user_loc.lower() not in p_loc.lower():
+            response_text = (
+                f"I found top-rated {service_type} nearby in **{p_loc}** ({p_name}){date_str}! "
+                f"Here are the available time slots. Tap any slot to confirm your booking instantly:"
+            )
+        else:
+            loc_str = f" in {p_loc}" if p_loc else ""
+            response_text = (
+                f"I found top-rated {service_type}{loc_str}{date_str}! "
+                f"Here are the available booking slots with {p_name} and other matching providers below. "
+                f"Tap any slot to confirm your booking instantly:"
+            )
     else:
+        loc_str = f" in {user_loc}" if user_loc else ""
         response_text = (
             f"I couldn't find any available {service_type}{loc_str} matching your request right now. "
             "Could you try a different time, date, or location?"

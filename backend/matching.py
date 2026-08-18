@@ -11,40 +11,50 @@ from datetime import datetime, date, timedelta
 # Category keyword map for intent → category matching
 CATEGORY_MAP = {
     "Beauty & Hair": [
-        "hair", "haircut", "salon", "trim", "style", "blowout", "color",
-        "highlights", "barber", "beauty", "nail", "manicure", "pedicure"
+        "hair", "haircut", "salon", "saloon", "trim", "style", "blowout", "color",
+        "highlights", "barber", "beauty", "nail", "manicure", "pedicure",
+        "keratin", "balayage", "facial", "makeup", "grooming", "beard"
     ],
     "Healthcare": [
         "doctor", "physician", "checkup", "medical", "health", "clinic",
-        "gp", "general practitioner", "prescription", "consultation doctor"
+        "gp", "general practitioner", "prescription", "consultation", "doctor consultation",
+        "pediatric", "diagnostics", "cardio", "fever", "blood test", "health checkup"
     ],
     "Wellness & Spa": [
         "massage", "spa", "relaxation", "facial", "skincare", "therapy",
-        "stress", "wellness", "body", "aromatherapy", "hot stone"
+        "stress", "wellness", "body", "aromatherapy", "hot stone",
+        "ayurveda", "deep tissue", "reflexology", "sports massage"
     ],
     "Fitness": [
         "gym", "workout", "training", "personal trainer", "yoga", "pilates",
-        "fitness", "exercise", "crossfit", "strength", "cardio"
+        "fitness", "exercise", "crossfit", "strength", "cardio",
+        "weight loss", "hiit", "bodybuilding", "calisthenics", "core"
     ],
     "Dental": [
-        "dental", "dentist", "teeth", "tooth", "cavity", "cleaning",
-        "orthodontist", "braces", "whitening", "root canal"
+        "dental", "dentist", "teeth", "tooth", "cavity", "cleaning", "teeth cleaning", "tooth cleaning",
+        "orthodontist", "braces", "whitening", "teeth whitening", "root canal", "rct",
+        "aligners", "oral checkup", "dental clinic", "scaling"
     ],
     "Legal": [
-        "lawyer", "legal", "attorney", "law", "contract", "advice legal",
-        "consultation legal", "litigation"
+        "lawyer", "legal", "attorney", "law", "contract", "advice", "legal advice",
+        "consultation", "litigation", "trademark", "patent", "startup law",
+        "agreement", "corporate law", "meetup", "lawyer meetup", "nda", "advocate"
     ],
     "Consulting": [
         "consulting", "consultant", "business", "strategy", "advice",
-        "audit", "planning", "review", "meeting"
+        "audit", "planning", "review", "meeting", "financial planning",
+        "startup mentoring", "tax advisory"
     ],
     "Education": [
-        "tutor", "tutoring", "learn", "class", "lesson", "coach",
-        "teaching", "study", "academic"
+        "tutor", "tutoring", "learn", "class", "classes", "lesson", "coach",
+        "teaching", "study", "academic", "python", "ai", "coding",
+        "maths", "sat prep", "mentorship", "education", "tuition", "tuitions",
+        "tuition classes", "interview prep", "system design"
     ],
     "Home Services": [
-        "plumber", "electrician", "repair", "cleaning home", "pest",
-        "handyman", "maid", "painting home", "carpenter"
+        "plumber", "electrician", "repair", "cleaning", "pest",
+        "handyman", "maid", "painting", "carpenter", "ac service", "ac repair",
+        "appliance repair", "deep cleaning", "house cleaning", "sanitization"
     ],
 }
 
