@@ -75,14 +75,14 @@ ALTER TABLE users          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_sessions  ENABLE ROW LEVEL SECURITY;
 
 -- Users can read/update their own row only
-CREATE POLICY "users_select_own" ON users
+DROP POLICY IF EXISTS "users_select_own" ON users;`r`nCREATE POLICY "users_select_own" ON users
   FOR SELECT USING (auth.uid() = id);
 
-CREATE POLICY "users_update_own" ON users
+DROP POLICY IF EXISTS "users_update_own" ON users;`r`nCREATE POLICY "users_update_own" ON users
   FOR UPDATE USING (auth.uid() = id);
 
 -- Sessions: users can only see their own sessions
-CREATE POLICY "sessions_select_own" ON user_sessions
+DROP POLICY IF EXISTS "sessions_select_own" ON user_sessions;`r`nCREATE POLICY "sessions_select_own" ON user_sessions
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Service role (server) can bypass all RLS for admin operations

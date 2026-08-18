@@ -101,10 +101,10 @@ ALTER TABLE ai_chat_sessions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_chat_messages  ENABLE ROW LEVEL SECURITY;
 
 -- Users can only access their own chat sessions and messages
-CREATE POLICY "chat_sessions_own" ON ai_chat_sessions
+DROP POLICY IF EXISTS "chat_sessions_own" ON ai_chat_sessions;`r`nCREATE POLICY "chat_sessions_own" ON ai_chat_sessions
   FOR ALL USING (auth.uid() = user_id);
 
-CREATE POLICY "chat_messages_own" ON ai_chat_messages
+DROP POLICY IF EXISTS "chat_messages_own" ON ai_chat_messages;`r`nCREATE POLICY "chat_messages_own" ON ai_chat_messages
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM ai_chat_sessions WHERE id = session_id)
   );

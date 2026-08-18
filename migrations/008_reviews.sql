@@ -87,15 +87,15 @@ CREATE INDEX IF NOT EXISTS idx_reviews_provider_public
 ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
 
 -- Anyone can read public, non-flagged reviews
-CREATE POLICY "reviews_public_read" ON reviews
+DROP POLICY IF EXISTS "reviews_public_read" ON reviews;`r`nCREATE POLICY "reviews_public_read" ON reviews
   FOR SELECT USING (is_public = TRUE AND is_flagged = FALSE);
 
 -- Reviewers can see their own reviews regardless of flags
-CREATE POLICY "reviews_reviewer_read_own" ON reviews
+DROP POLICY IF EXISTS "reviews_reviewer_read_own" ON reviews;`r`nCREATE POLICY "reviews_reviewer_read_own" ON reviews
   FOR SELECT USING (auth.uid() = reviewer_id);
 
 -- Only the reviewer can insert a review (and only for their own completed bookings)
-CREATE POLICY "reviews_insert_own" ON reviews
+DROP POLICY IF EXISTS "reviews_insert_own" ON reviews;`r`nCREATE POLICY "reviews_insert_own" ON reviews
   FOR INSERT WITH CHECK (
     auth.uid() = reviewer_id AND
     EXISTS (
@@ -107,5 +107,5 @@ CREATE POLICY "reviews_insert_own" ON reviews
   );
 
 -- Reviewers can update their own reviews
-CREATE POLICY "reviews_update_own" ON reviews
+DROP POLICY IF EXISTS "reviews_update_own" ON reviews;`r`nCREATE POLICY "reviews_update_own" ON reviews
   FOR UPDATE USING (auth.uid() = reviewer_id);

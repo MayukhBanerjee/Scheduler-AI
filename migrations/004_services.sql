@@ -93,20 +93,20 @@ ALTER TABLE services      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE service_tags  ENABLE ROW LEVEL SECURITY;
 
 -- Services are publicly readable (any authenticated user can browse)
-CREATE POLICY "services_public_read" ON services
+DROP POLICY IF EXISTS "services_public_read" ON services;`r`nCREATE POLICY "services_public_read" ON services
   FOR SELECT USING (TRUE);
 
 -- Providers can only INSERT/UPDATE/DELETE their own services
-CREATE POLICY "services_manage_own" ON services
+DROP POLICY IF EXISTS "services_manage_own" ON services;`r`nCREATE POLICY "services_manage_own" ON services
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
 
 -- Service tags follow service ownership
-CREATE POLICY "service_tags_public_read" ON service_tags
+DROP POLICY IF EXISTS "service_tags_public_read" ON service_tags;`r`nCREATE POLICY "service_tags_public_read" ON service_tags
   FOR SELECT USING (TRUE);
 
-CREATE POLICY "service_tags_manage_own" ON service_tags
+DROP POLICY IF EXISTS "service_tags_manage_own" ON service_tags;`r`nCREATE POLICY "service_tags_manage_own" ON service_tags
   FOR ALL USING (
     auth.uid() = (
       SELECT pp.user_id FROM provider_profiles pp
