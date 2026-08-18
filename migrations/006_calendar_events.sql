@@ -119,26 +119,31 @@ ALTER TABLE calendar_events    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE booking_conflicts  ENABLE ROW LEVEL SECURITY;
 
 -- Users see their own calendar events only
-DROP POLICY IF EXISTS "calendar_events_user_read" ON calendar_events;`r`nCREATE POLICY "calendar_events_user_read" ON calendar_events
+DROP POLICY IF EXISTS "calendar_events_user_read" ON calendar_events;
+CREATE POLICY "calendar_events_user_read" ON calendar_events
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Providers see their own calendar events only
-DROP POLICY IF EXISTS "calendar_events_provider_read" ON calendar_events;`r`nCREATE POLICY "calendar_events_provider_read" ON calendar_events
+DROP POLICY IF EXISTS "calendar_events_provider_read" ON calendar_events;
+CREATE POLICY "calendar_events_provider_read" ON calendar_events
   FOR SELECT USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
 
 -- Users and providers can manage their own events
-DROP POLICY IF EXISTS "calendar_events_user_manage" ON calendar_events;`r`nCREATE POLICY "calendar_events_user_manage" ON calendar_events
+DROP POLICY IF EXISTS "calendar_events_user_manage" ON calendar_events;
+CREATE POLICY "calendar_events_user_manage" ON calendar_events
   FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "calendar_events_provider_manage" ON calendar_events;`r`nCREATE POLICY "calendar_events_provider_manage" ON calendar_events
+DROP POLICY IF EXISTS "calendar_events_provider_manage" ON calendar_events;
+CREATE POLICY "calendar_events_provider_manage" ON calendar_events
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
 
 -- Conflicts: visible to both parties
-DROP POLICY IF EXISTS "conflicts_read_parties" ON booking_conflicts;`r`nCREATE POLICY "conflicts_read_parties" ON booking_conflicts
+DROP POLICY IF EXISTS "conflicts_read_parties" ON booking_conflicts;
+CREATE POLICY "conflicts_read_parties" ON booking_conflicts
   FOR SELECT USING (
     auth.uid() = (SELECT user_id FROM bookings WHERE id = booking_a_id) OR
     auth.uid() = (SELECT user_id FROM bookings WHERE id = booking_b_id) OR

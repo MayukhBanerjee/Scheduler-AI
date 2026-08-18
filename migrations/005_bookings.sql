@@ -114,22 +114,26 @@ CREATE INDEX IF NOT EXISTS idx_bookings_provider_upcoming
 ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 
 -- Users can only see their own bookings
-DROP POLICY IF EXISTS "bookings_user_read_own" ON bookings;`r`nCREATE POLICY "bookings_user_read_own" ON bookings
+DROP POLICY IF EXISTS "bookings_user_read_own" ON bookings;
+CREATE POLICY "bookings_user_read_own" ON bookings
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Providers can see bookings for their services
-DROP POLICY IF EXISTS "bookings_provider_read_own" ON bookings;`r`nCREATE POLICY "bookings_provider_read_own" ON bookings
+DROP POLICY IF EXISTS "bookings_provider_read_own" ON bookings;
+CREATE POLICY "bookings_provider_read_own" ON bookings
   FOR SELECT USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
 
 -- Users can create bookings (INSERT) for themselves
-DROP POLICY IF EXISTS "bookings_user_insert" ON bookings;`r`nCREATE POLICY "bookings_user_insert" ON bookings
+DROP POLICY IF EXISTS "bookings_user_insert" ON bookings;
+CREATE POLICY "bookings_user_insert" ON bookings
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Users and providers can update status of their bookings
 -- (cancel: user or provider; complete: provider only — enforced in app layer)
-DROP POLICY IF EXISTS "bookings_update_participants" ON bookings;`r`nCREATE POLICY "bookings_update_participants" ON bookings
+DROP POLICY IF EXISTS "bookings_update_participants" ON bookings;
+CREATE POLICY "bookings_update_participants" ON bookings
   FOR UPDATE USING (
     auth.uid() = user_id OR
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)

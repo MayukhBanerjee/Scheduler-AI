@@ -102,31 +102,37 @@ ALTER TABLE provider_search_tags  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE availability_slots    ENABLE ROW LEVEL SECURITY;
 
 -- Anyone (authenticated) can READ provider profiles for discovery
-DROP POLICY IF EXISTS "provider_profiles_public_read" ON provider_profiles;`r`nCREATE POLICY "provider_profiles_public_read" ON provider_profiles
+DROP POLICY IF EXISTS "provider_profiles_public_read" ON provider_profiles;
+CREATE POLICY "provider_profiles_public_read" ON provider_profiles
   FOR SELECT USING (TRUE);
 
 -- Providers can only UPDATE their own profile
-DROP POLICY IF EXISTS "provider_profiles_update_own" ON provider_profiles;`r`nCREATE POLICY "provider_profiles_update_own" ON provider_profiles
+DROP POLICY IF EXISTS "provider_profiles_update_own" ON provider_profiles;
+CREATE POLICY "provider_profiles_update_own" ON provider_profiles
   FOR UPDATE USING (
     auth.uid() = user_id
   );
 
 -- Tags are readable by all (for AI agent searches)
-DROP POLICY IF EXISTS "search_tags_public_read" ON provider_search_tags;`r`nCREATE POLICY "search_tags_public_read" ON provider_search_tags
+DROP POLICY IF EXISTS "search_tags_public_read" ON provider_search_tags;
+CREATE POLICY "search_tags_public_read" ON provider_search_tags
   FOR SELECT USING (TRUE);
 
 -- Providers can only modify their own tags
-DROP POLICY IF EXISTS "search_tags_manage_own" ON provider_search_tags;`r`nCREATE POLICY "search_tags_manage_own" ON provider_search_tags
+DROP POLICY IF EXISTS "search_tags_manage_own" ON provider_search_tags;
+CREATE POLICY "search_tags_manage_own" ON provider_search_tags
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
 
 -- Availability: publicly readable for booking discovery
-DROP POLICY IF EXISTS "availability_public_read" ON availability_slots;`r`nCREATE POLICY "availability_public_read" ON availability_slots
+DROP POLICY IF EXISTS "availability_public_read" ON availability_slots;
+CREATE POLICY "availability_public_read" ON availability_slots
   FOR SELECT USING (TRUE);
 
 -- Only the owning provider can create/update/delete their slots
-DROP POLICY IF EXISTS "availability_manage_own" ON availability_slots;`r`nCREATE POLICY "availability_manage_own" ON availability_slots
+DROP POLICY IF EXISTS "availability_manage_own" ON availability_slots;
+CREATE POLICY "availability_manage_own" ON availability_slots
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );

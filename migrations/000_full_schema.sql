@@ -115,14 +115,17 @@ ALTER TABLE users          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_sessions  ENABLE ROW LEVEL SECURITY;
 
 -- Users can read/update their own row only
-DROP POLICY IF EXISTS "users_select_own" ON users;`r`nCREATE POLICY "users_select_own" ON users
+DROP POLICY IF EXISTS "users_select_own" ON users;
+CREATE POLICY "users_select_own" ON users
   FOR SELECT USING (auth.uid() = id);
 
-DROP POLICY IF EXISTS "users_update_own" ON users;`r`nCREATE POLICY "users_update_own" ON users
+DROP POLICY IF EXISTS "users_update_own" ON users;
+CREATE POLICY "users_update_own" ON users
   FOR UPDATE USING (auth.uid() = id);
 
 -- Sessions: users can only see their own sessions
-DROP POLICY IF EXISTS "sessions_select_own" ON user_sessions;`r`nCREATE POLICY "sessions_select_own" ON user_sessions
+DROP POLICY IF EXISTS "sessions_select_own" ON user_sessions;
+CREATE POLICY "sessions_select_own" ON user_sessions
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Service role (server) can bypass all RLS for admin operations
@@ -239,31 +242,37 @@ ALTER TABLE provider_search_tags  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE availability_slots    ENABLE ROW LEVEL SECURITY;
 
 -- Anyone (authenticated) can READ provider profiles for discovery
-DROP POLICY IF EXISTS "provider_profiles_public_read" ON provider_profiles;`r`nCREATE POLICY "provider_profiles_public_read" ON provider_profiles
+DROP POLICY IF EXISTS "provider_profiles_public_read" ON provider_profiles;
+CREATE POLICY "provider_profiles_public_read" ON provider_profiles
   FOR SELECT USING (TRUE);
 
 -- Providers can only UPDATE their own profile
-DROP POLICY IF EXISTS "provider_profiles_update_own" ON provider_profiles;`r`nCREATE POLICY "provider_profiles_update_own" ON provider_profiles
+DROP POLICY IF EXISTS "provider_profiles_update_own" ON provider_profiles;
+CREATE POLICY "provider_profiles_update_own" ON provider_profiles
   FOR UPDATE USING (
     auth.uid() = user_id
   );
 
 -- Tags are readable by all (for AI agent searches)
-DROP POLICY IF EXISTS "search_tags_public_read" ON provider_search_tags;`r`nCREATE POLICY "search_tags_public_read" ON provider_search_tags
+DROP POLICY IF EXISTS "search_tags_public_read" ON provider_search_tags;
+CREATE POLICY "search_tags_public_read" ON provider_search_tags
   FOR SELECT USING (TRUE);
 
 -- Providers can only modify their own tags
-DROP POLICY IF EXISTS "search_tags_manage_own" ON provider_search_tags;`r`nCREATE POLICY "search_tags_manage_own" ON provider_search_tags
+DROP POLICY IF EXISTS "search_tags_manage_own" ON provider_search_tags;
+CREATE POLICY "search_tags_manage_own" ON provider_search_tags
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
 
 -- Availability: publicly readable for booking discovery
-DROP POLICY IF EXISTS "availability_public_read" ON availability_slots;`r`nCREATE POLICY "availability_public_read" ON availability_slots
+DROP POLICY IF EXISTS "availability_public_read" ON availability_slots;
+CREATE POLICY "availability_public_read" ON availability_slots
   FOR SELECT USING (TRUE);
 
 -- Only the owning provider can create/update/delete their slots
-DROP POLICY IF EXISTS "availability_manage_own" ON availability_slots;`r`nCREATE POLICY "availability_manage_own" ON availability_slots
+DROP POLICY IF EXISTS "availability_manage_own" ON availability_slots;
+CREATE POLICY "availability_manage_own" ON availability_slots
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
@@ -370,20 +379,24 @@ ALTER TABLE services      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE service_tags  ENABLE ROW LEVEL SECURITY;
 
 -- Services are publicly readable (any authenticated user can browse)
-DROP POLICY IF EXISTS "services_public_read" ON services;`r`nCREATE POLICY "services_public_read" ON services
+DROP POLICY IF EXISTS "services_public_read" ON services;
+CREATE POLICY "services_public_read" ON services
   FOR SELECT USING (TRUE);
 
 -- Providers can only INSERT/UPDATE/DELETE their own services
-DROP POLICY IF EXISTS "services_manage_own" ON services;`r`nCREATE POLICY "services_manage_own" ON services
+DROP POLICY IF EXISTS "services_manage_own" ON services;
+CREATE POLICY "services_manage_own" ON services
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
 
 -- Service tags follow service ownership
-DROP POLICY IF EXISTS "service_tags_public_read" ON service_tags;`r`nCREATE POLICY "service_tags_public_read" ON service_tags
+DROP POLICY IF EXISTS "service_tags_public_read" ON service_tags;
+CREATE POLICY "service_tags_public_read" ON service_tags
   FOR SELECT USING (TRUE);
 
-DROP POLICY IF EXISTS "service_tags_manage_own" ON service_tags;`r`nCREATE POLICY "service_tags_manage_own" ON service_tags
+DROP POLICY IF EXISTS "service_tags_manage_own" ON service_tags;
+CREATE POLICY "service_tags_manage_own" ON service_tags
   FOR ALL USING (
     auth.uid() = (
       SELECT pp.user_id FROM provider_profiles pp
@@ -515,22 +528,26 @@ CREATE INDEX IF NOT EXISTS idx_bookings_provider_upcoming
 ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 
 -- Users can only see their own bookings
-DROP POLICY IF EXISTS "bookings_user_read_own" ON bookings;`r`nCREATE POLICY "bookings_user_read_own" ON bookings
+DROP POLICY IF EXISTS "bookings_user_read_own" ON bookings;
+CREATE POLICY "bookings_user_read_own" ON bookings
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Providers can see bookings for their services
-DROP POLICY IF EXISTS "bookings_provider_read_own" ON bookings;`r`nCREATE POLICY "bookings_provider_read_own" ON bookings
+DROP POLICY IF EXISTS "bookings_provider_read_own" ON bookings;
+CREATE POLICY "bookings_provider_read_own" ON bookings
   FOR SELECT USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
 
 -- Users can create bookings (INSERT) for themselves
-DROP POLICY IF EXISTS "bookings_user_insert" ON bookings;`r`nCREATE POLICY "bookings_user_insert" ON bookings
+DROP POLICY IF EXISTS "bookings_user_insert" ON bookings;
+CREATE POLICY "bookings_user_insert" ON bookings
   FOR INSERT WITH CHECK (auth.uid() = user_id);
 
 -- Users and providers can update status of their bookings
 -- (cancel: user or provider; complete: provider only — enforced in app layer)
-DROP POLICY IF EXISTS "bookings_update_participants" ON bookings;`r`nCREATE POLICY "bookings_update_participants" ON bookings
+DROP POLICY IF EXISTS "bookings_update_participants" ON bookings;
+CREATE POLICY "bookings_update_participants" ON bookings
   FOR UPDATE USING (
     auth.uid() = user_id OR
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
@@ -664,26 +681,31 @@ ALTER TABLE calendar_events    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE booking_conflicts  ENABLE ROW LEVEL SECURITY;
 
 -- Users see their own calendar events only
-DROP POLICY IF EXISTS "calendar_events_user_read" ON calendar_events;`r`nCREATE POLICY "calendar_events_user_read" ON calendar_events
+DROP POLICY IF EXISTS "calendar_events_user_read" ON calendar_events;
+CREATE POLICY "calendar_events_user_read" ON calendar_events
   FOR SELECT USING (auth.uid() = user_id);
 
 -- Providers see their own calendar events only
-DROP POLICY IF EXISTS "calendar_events_provider_read" ON calendar_events;`r`nCREATE POLICY "calendar_events_provider_read" ON calendar_events
+DROP POLICY IF EXISTS "calendar_events_provider_read" ON calendar_events;
+CREATE POLICY "calendar_events_provider_read" ON calendar_events
   FOR SELECT USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
 
 -- Users and providers can manage their own events
-DROP POLICY IF EXISTS "calendar_events_user_manage" ON calendar_events;`r`nCREATE POLICY "calendar_events_user_manage" ON calendar_events
+DROP POLICY IF EXISTS "calendar_events_user_manage" ON calendar_events;
+CREATE POLICY "calendar_events_user_manage" ON calendar_events
   FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "calendar_events_provider_manage" ON calendar_events;`r`nCREATE POLICY "calendar_events_provider_manage" ON calendar_events
+DROP POLICY IF EXISTS "calendar_events_provider_manage" ON calendar_events;
+CREATE POLICY "calendar_events_provider_manage" ON calendar_events
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM provider_profiles WHERE id = provider_id)
   );
 
 -- Conflicts: visible to both parties
-DROP POLICY IF EXISTS "conflicts_read_parties" ON booking_conflicts;`r`nCREATE POLICY "conflicts_read_parties" ON booking_conflicts
+DROP POLICY IF EXISTS "conflicts_read_parties" ON booking_conflicts;
+CREATE POLICY "conflicts_read_parties" ON booking_conflicts
   FOR SELECT USING (
     auth.uid() = (SELECT user_id FROM bookings WHERE id = booking_a_id) OR
     auth.uid() = (SELECT user_id FROM bookings WHERE id = booking_b_id) OR
@@ -774,7 +796,7 @@ END $$;
 
 -- ── ai_chat_sessions ──────────────────────────────────────────────────────────
 -- One session per conversation thread. Maps to the conversation_id
--- generated in the chat route: `${session.userId}-${Date.now()}`
+-- generated in the chat route: {userId}-{timestamp}
 CREATE TABLE IF NOT EXISTS ai_chat_sessions (
   id               UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id          UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -850,10 +872,12 @@ ALTER TABLE ai_chat_sessions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_chat_messages  ENABLE ROW LEVEL SECURITY;
 
 -- Users can only access their own chat sessions and messages
-DROP POLICY IF EXISTS "chat_sessions_own" ON ai_chat_sessions;`r`nCREATE POLICY "chat_sessions_own" ON ai_chat_sessions
+DROP POLICY IF EXISTS "chat_sessions_own" ON ai_chat_sessions;
+CREATE POLICY "chat_sessions_own" ON ai_chat_sessions
   FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "chat_messages_own" ON ai_chat_messages;`r`nCREATE POLICY "chat_messages_own" ON ai_chat_messages
+DROP POLICY IF EXISTS "chat_messages_own" ON ai_chat_messages;
+CREATE POLICY "chat_messages_own" ON ai_chat_messages
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM ai_chat_sessions WHERE id = session_id)
   );
@@ -954,15 +978,18 @@ CREATE INDEX IF NOT EXISTS idx_reviews_provider_public
 ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
 
 -- Anyone can read public, non-flagged reviews
-DROP POLICY IF EXISTS "reviews_public_read" ON reviews;`r`nCREATE POLICY "reviews_public_read" ON reviews
+DROP POLICY IF EXISTS "reviews_public_read" ON reviews;
+CREATE POLICY "reviews_public_read" ON reviews
   FOR SELECT USING (is_public = TRUE AND is_flagged = FALSE);
 
 -- Reviewers can see their own reviews regardless of flags
-DROP POLICY IF EXISTS "reviews_reviewer_read_own" ON reviews;`r`nCREATE POLICY "reviews_reviewer_read_own" ON reviews
+DROP POLICY IF EXISTS "reviews_reviewer_read_own" ON reviews;
+CREATE POLICY "reviews_reviewer_read_own" ON reviews
   FOR SELECT USING (auth.uid() = reviewer_id);
 
 -- Only the reviewer can insert a review (and only for their own completed bookings)
-DROP POLICY IF EXISTS "reviews_insert_own" ON reviews;`r`nCREATE POLICY "reviews_insert_own" ON reviews
+DROP POLICY IF EXISTS "reviews_insert_own" ON reviews;
+CREATE POLICY "reviews_insert_own" ON reviews
   FOR INSERT WITH CHECK (
     auth.uid() = reviewer_id AND
     EXISTS (
@@ -974,7 +1001,8 @@ DROP POLICY IF EXISTS "reviews_insert_own" ON reviews;`r`nCREATE POLICY "reviews
   );
 
 -- Reviewers can update their own reviews
-DROP POLICY IF EXISTS "reviews_update_own" ON reviews;`r`nCREATE POLICY "reviews_update_own" ON reviews
+DROP POLICY IF EXISTS "reviews_update_own" ON reviews;
+CREATE POLICY "reviews_update_own" ON reviews
   FOR UPDATE USING (auth.uid() = reviewer_id);
 
 

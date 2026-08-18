@@ -25,7 +25,7 @@ END $$;
 
 -- ── ai_chat_sessions ──────────────────────────────────────────────────────────
 -- One session per conversation thread. Maps to the conversation_id
--- generated in the chat route: `${session.userId}-${Date.now()}`
+-- generated in the chat route: {userId}-{timestamp}
 CREATE TABLE IF NOT EXISTS ai_chat_sessions (
   id               UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id          UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -101,10 +101,12 @@ ALTER TABLE ai_chat_sessions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_chat_messages  ENABLE ROW LEVEL SECURITY;
 
 -- Users can only access their own chat sessions and messages
-DROP POLICY IF EXISTS "chat_sessions_own" ON ai_chat_sessions;`r`nCREATE POLICY "chat_sessions_own" ON ai_chat_sessions
+DROP POLICY IF EXISTS "chat_sessions_own" ON ai_chat_sessions;
+CREATE POLICY "chat_sessions_own" ON ai_chat_sessions
   FOR ALL USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "chat_messages_own" ON ai_chat_messages;`r`nCREATE POLICY "chat_messages_own" ON ai_chat_messages
+DROP POLICY IF EXISTS "chat_messages_own" ON ai_chat_messages;
+CREATE POLICY "chat_messages_own" ON ai_chat_messages
   FOR ALL USING (
     auth.uid() = (SELECT user_id FROM ai_chat_sessions WHERE id = session_id)
   );
