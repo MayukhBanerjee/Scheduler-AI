@@ -54,9 +54,9 @@ def _extract_text(content: Any) -> str:
 
 def invoke_llm(messages: list) -> str:
     """Invoke Gemini model with automated fallback across available model versions."""
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY not found in .env file.")
+        raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY not found in .env file.")
 
     models_to_try = []
     preferred = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
