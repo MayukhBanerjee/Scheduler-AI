@@ -308,11 +308,10 @@ export default function AISchedulePage() {
   const handleBookService = async (service: ServiceResult, slot: string) => {
     setBookingInProgress(service.service_id)
 
-    const tomorrow = new Date()
-    tomorrow.setDate(tomorrow.getDate() + 1)
-    let dateStr = tomorrow.toISOString().split("T")[0]
-    if (service.date && /^\d{4}-\d{2}-\d{2}$/.test(service.date)) {
-      dateStr = service.date
+    let dateStr = service.date
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      const today = new Date()
+      dateStr = today.toISOString().split("T")[0]
     }
 
     try {

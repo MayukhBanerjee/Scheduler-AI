@@ -90,6 +90,7 @@ class AgentState(TypedDict):
     raw_services: Optional[List[Dict]]
     raw_providers: Optional[List[Dict]]
     availability_map: Optional[Dict[str, List[str]]]
+    date_map: Optional[Dict[str, str]]
     ranked_results: Optional[List[Dict]]
     response: Optional[str]
     needs_clarification: bool
@@ -308,8 +309,9 @@ async def node_db_retriever(state: AgentState) -> AgentState:
     intent = state.get("intent") or {}
     date_str = intent.get("date")
     filtered = filter_by_availability(providers, time_pref, date_str)
-    availability_map = {str(p.get("_id", "")): slots for p, slots in filtered}
-    available_providers = [p for p, _ in filtered]
+    availability_map = {str(p.get("_id", "")): slots for p, slots, _ in filtered}
+    date_map = {str(p.get("_id", "")): p_date for p, _, p_date in filtered}
+    available_providers = [p for p, _, _ in filtered]
 
     # Only keep services whose providers survived availability filtering
     available_ids = {str(p.get("_id", "")) for p in available_providers}
@@ -320,6 +322,7 @@ async def node_db_retriever(state: AgentState) -> AgentState:
         "raw_services": services,
         "raw_providers": available_providers,
         "availability_map": availability_map,
+        "date_map": date_map,
     }
 
 
@@ -332,13 +335,21 @@ def node_ranking_engine(state: AgentState) -> AgentState:
     providers = state.get("raw_providers") or []
     intent = state.get("intent") or {}
     availability_map = state.get("availability_map") or {}
+    date_map = state.get("date_map") or {}
     goal = state.get("goal_frame") or {}
     priorities = goal.get("priorities") or ["rating", "availability", "price"]
 
     if not services or not providers:
         return {**state, "ranked_results": []}
 
-    ranked = rank_results(services, providers, intent, availability_map, priorities=priorities)
+    ranked = rank_results(
+        services,
+        providers,
+        intent,
+        availability_map,
+        priorities=priorities,
+        date_map=date_map,
+    )
     return {**state, "ranked_results": ranked}
 
 

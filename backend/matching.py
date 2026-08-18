@@ -172,13 +172,14 @@ def filter_by_availability(
     providers: List[Dict],
     time_str: Optional[str],
     date_str: Optional[str] = None,
-) -> List[Tuple[Dict, List[str]]]:
+) -> List[Tuple[Dict, List[str], str]]:
     """
-    Returns list of (provider, matching_slots) pairs.
-    Providers with no matching slots for a requested date/day are omitted.
+    Returns list of (provider, matching_slots, exact_iso_date) tuples.
+    Guarantees every returned slot strictly belongs to that exact calendar date.
     """
     time_bounds = parse_time_preference(time_str)
     iso_date = resolve_iso_date(date_str)
+    today = date.today()
 
     day_key = get_day_key(time_str) or get_day_key(date_str)
 
@@ -194,28 +195,50 @@ def filter_by_availability(
 
     for provider in providers:
         availability: Dict[str, List[str]] = provider.get("availability", {}) or {}
+        provider_date = iso_date
+        slots = []
 
         if iso_date and iso_date in availability:
             slots = list(availability[iso_date] or [])
         elif day_key and day_key in availability:
             slots = list(availability[day_key] or [])
+            if not provider_date:
+                target_day_idx = STATIC_DAY_MAP.get(day_key, today.weekday())
+                delta = (target_day_idx - today.weekday()) % 7
+                provider_date = (today + timedelta(days=delta)).strftime("%Y-%m-%d")
         elif date_or_day_requested:
             continue
         else:
-            slots = []
-            for day_slots in availability.values():
-                if isinstance(day_slots, list):
-                    slots.extend(day_slots)
-            slots = sorted(set(slots))
+            # User did NOT specify a date: find the earliest upcoming working day with open slots
+            for offset in range(7):
+                check_date = today + timedelta(days=offset)
+                check_day_name = WEEKDAY_NAMES[check_date.weekday()]
+                check_iso = check_date.strftime("%Y-%m-%d")
+
+                if check_iso in availability and availability[check_iso]:
+                    candidate_slots = list(availability[check_iso])
+                elif check_day_name in availability and availability[check_day_name]:
+                    candidate_slots = list(availability[check_day_name])
+                else:
+                    candidate_slots = []
+
+                if time_bounds and candidate_slots:
+                    start_t, end_t = time_bounds
+                    candidate_slots = [s for s in candidate_slots if start_t <= s <= end_t]
+
+                if candidate_slots:
+                    slots = candidate_slots
+                    provider_date = check_iso
+                    break
 
         if time_bounds and slots:
             start_t, end_t = time_bounds
             slots = [s for s in slots if start_t <= s <= end_t]
 
-        if date_or_day_requested and not slots:
+        if not slots or not provider_date:
             continue
 
-        result.append((provider, slots[:5]))
+        result.append((provider, slots[:5], provider_date))
 
     return result
 
@@ -239,6 +262,7 @@ def rank_results(
     intent: Dict,
     filtered_availability: Dict[str, List[str]],
     priorities: Optional[List[str]] = None,
+    date_map: Optional[Dict[str, str]] = None,
 ) -> List[Dict]:
     """
     Rank service results using goal priorities / urgency.
@@ -247,6 +271,7 @@ def rank_results(
     provider_name_pref = (intent.get("provider_name") or "").lower()
     date_requested = bool(intent.get("date"))
     priorities = priorities or ["rating", "availability", "price"]
+    date_map = date_map or {}
     scored = []
 
     for service in services:
@@ -302,7 +327,7 @@ def rank_results(
             "rating": p.get("rating", 4.0),
             "description": s.get("description", ""),
             "tags": s.get("tags", []),
-            "date": resolved_date or intent.get("date"),
+            "date": date_map.get(str(p.get("_id", ""))) or resolved_date or intent.get("date"),
         }
-        for score, s, p, slots in scored[:5]
+        for _, s, p, slots in scored
     ]
