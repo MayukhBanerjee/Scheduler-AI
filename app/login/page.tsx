@@ -81,7 +81,11 @@ export default function LoginPage() {
         <Card className="shadow-2xl border-border/50">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-bold text-center">Welcome back</CardTitle>
-            <CardDescription className="text-center">Sign in to your account</CardDescription>
+            <CardDescription className="text-center">
+              {searchParams.get("switch") === "true"
+                ? `Switching to ${role === "provider" ? "Business" : "Customer"} — please sign in with your credentials.`
+                : "Sign in to your account"}
+            </CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-6">

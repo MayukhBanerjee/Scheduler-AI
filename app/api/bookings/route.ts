@@ -216,6 +216,12 @@ export async function GET(req: Request) {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    if (session.role !== "user") {
+      return NextResponse.json(
+        { error: "Only customer accounts can book appointments" },
+        { status: 403 }
+      );
+    }
 
     const db = await getDb();
     const { searchParams } = new URL(req.url);

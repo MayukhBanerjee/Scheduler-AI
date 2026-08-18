@@ -189,90 +189,60 @@ export function BookingCalendar({
       : null
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader className="pb-3 border-b border-border/50">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <motion.div
-              animate={{ rotate: isLoading ? 360 : 0 }}
-              transition={{
-                duration: 1,
-                repeat: isLoading ? Infinity : 0,
-                ease: "linear",
-              }}
-            >
-              <CalendarIcon className="h-5 w-5 text-primary" />
-            </motion.div>
-            ScheduleAI Calendar
-            {isConnected && events.length > 0 && (
-              <motion.div
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 500 }}
-              >
-                <Badge variant="secondary" className="ml-1 text-xs">
-                  {events.length} upcoming
-                </Badge>
-              </motion.div>
+    <div className="glass-card rounded-[2rem] p-5 sm:p-6 flex flex-col h-full bg-white/70 dark:bg-stone-900/70 backdrop-blur-xl border border-white/60 dark:border-stone-800 shadow-[0_4px_30px_rgba(0,0,0,0.04)]">
+      {/* Calendar Header */}
+      <div className="pb-3.5 border-b border-orange-100/60 dark:border-stone-800 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-orange-500/15 text-[#b02f00] dark:text-orange-400 flex items-center justify-center shadow-xs">
+            <CalendarIcon className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-extrabold text-base text-stone-900 dark:text-stone-100 leading-tight">
+              ScheduleAI Calendar
+            </h3>
+            {mounted && lastSync && (
+              <p className="text-[11px] font-medium text-stone-400 mt-0.5">
+                Last synced:{" "}
+                {lastSync.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+              </p>
             )}
-          </CardTitle>
-
-          <div className="flex items-center gap-2">
-            {isConnected && (
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button
-                  id="calendar-sync-btn"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleSync}
-                  disabled={isLoading}
-                >
-                  <motion.div
-                    animate={{ rotate: isLoading ? 360 : 0 }}
-                    transition={{
-                      duration: 1,
-                      repeat: isLoading ? Infinity : 0,
-                      ease: "linear",
-                    }}
-                  >
-                    <RefreshCw className="h-4 w-4 mr-1" />
-                  </motion.div>
-                  Sync
-                </Button>
-              </motion.div>
-            )}
-
-            <AnimatePresence>
-              {syncStatus !== "idle" && statusLabel && (
-                <motion.div
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  exit={{ scale: 0, opacity: 0 }}
-                  transition={{ type: "spring", stiffness: 500 }}
-                >
-                  <Badge
-                    variant={statusBadgeVariant}
-                    className={syncStatus === "syncing" ? "animate-pulse" : ""}
-                  >
-                    {statusLabel}
-                  </Badge>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </div>
 
-        {mounted && lastSync && (
-          <motion.p
-            className="text-xs text-muted-foreground"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-          >
-            Last synced:{" "}
-            {lastSync.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-          </motion.p>
-        )}
-      </CardHeader>
+        <div className="flex items-center gap-2">
+          {isConnected && (
+            <Button
+              id="calendar-sync-btn"
+              variant="outline"
+              size="sm"
+              onClick={handleSync}
+              disabled={isLoading}
+              className="rounded-full px-3 h-8 text-xs font-bold border-orange-200/70 dark:border-stone-700 bg-white/60 dark:bg-stone-800 hover:bg-orange-50 text-stone-700 dark:text-stone-300"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 mr-1 text-[#b02f00] ${isLoading ? "animate-spin" : ""}`} />
+              Sync
+            </Button>
+          )}
+
+          <AnimatePresence>
+            {syncStatus !== "idle" && statusLabel && (
+              <motion.div
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 500 }}
+              >
+                <Badge
+                  variant={statusBadgeVariant}
+                  className={`text-[10px] ${syncStatus === "syncing" ? "animate-pulse" : ""}`}
+                >
+                  {statusLabel}
+                </Badge>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
 
       <CardContent className="flex-1 flex flex-col p-4 overflow-hidden gap-4">
         {/* Full Interactive Calendar UI */}
@@ -364,6 +334,6 @@ export function BookingCalendar({
           </ScrollArea>
         </div>
       </CardContent>
-    </Card>
+    </div>
   )
 }
