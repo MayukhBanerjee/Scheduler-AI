@@ -113,7 +113,7 @@ export function HeroDashboardPreview() {
 
         {/* Mock Footer Status */}
         <div className="mt-3 pt-2.5 border-t border-orange-100 dark:border-stone-800 flex items-center justify-between text-[10px] text-stone-500">
-          <span>LangGraph + MongoDB Indexing</span>
+          <span>LangGraph + Supabase PostgreSQL</span>
           <span className="font-semibold text-[#b02f00]">Deterministic Slots</span>
         </div>
       </motion.div>

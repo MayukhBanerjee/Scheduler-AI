@@ -1,6 +1,6 @@
 # ScheduleAI — Universal Service Booking Engine
 
-ScheduleAI is a full-stack conversational booking platform. Customers discover and book local services through natural language (and optional voice input). Providers manage services and availability from a dedicated dashboard. A **LangGraph** agent (Gemini) parses intent and phrases replies; retrieval, ranking, and availability are **deterministic Python** over MongoDB `search_tags`.
+ScheduleAI is a full-stack conversational booking platform. Customers discover and book local services through natural language (and optional voice input). Providers manage services and availability from a dedicated dashboard. A **LangGraph** agent (Gemini) parses intent and phrases replies; retrieval, ranking, and availability are **deterministic Python** over Supabase PostgreSQL indexed tags and RPCs.
 
 ---
 
@@ -8,18 +8,17 @@ ScheduleAI is a full-stack conversational booking platform. Customers discover a
 
 ### AI chat booking
 - Multi-turn clarification (e.g. “haircut” → “tomorrow afternoon”)
-- Tag-indexed provider search (`search_tags: { $in: [...] }`)
+- GIN-indexed provider search (`provider_search_tags`)
 - Verified slots only — no hallucinated availability
-- Conflict-safe bookings with slot consumption
+- Conflict-safe bookings with double-booking prevention (partial unique index + GIST tsrange exclusion)
 
 ### Dual dashboards
 - **Customer:** AI chat, Web Speech mic → chat (Chrome/Edge), ScheduleAI calendar, cancel bookings
 - **Provider:** profile, services, availability overrides, calendar (month/week/day), cancel/complete bookings
 
 ### Calendar
-- Internal Mongo-backed booking calendar for both roles
+- Internal PostgreSQL-backed booking calendar with auto-trigger synchronization
 - Voice input via browser **Web Speech API** (no server STT)
-- Google Calendar OAuth sync is **out of scope** for the current ship
 
 ---
 
@@ -30,7 +29,7 @@ graph TD;
     A[Customer Chat UI] -->|JWT| B(POST /api/chat);
     B -->|X-API-Key| C[FastAPI /chat];
     C --> D[LangGraph 6-node agent];
-    D -->|search_tags $in| E[(MongoDB)];
+    D -->|search_providers_by_tags RPC| E[(Supabase PostgreSQL)];
     D --> F[Service cards + reply];
     F -->|User books slot| G(POST /api/bookings);
     G --> E;
@@ -44,8 +43,9 @@ graph TD;
 
 **Root `.env.local`** (see `.env.example`):
 ```env
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_DB_NAME=scheduleai
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 JWT_SECRET=change-me-to-a-long-random-string
 BACKEND_URL=http://localhost:8000
 NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
@@ -55,8 +55,8 @@ BACKEND_API_KEY=change-me-shared-api-key
 **`backend/.env`** (see `backend/.env.example`):
 ```env
 GEMINI_API_KEY=your_gemini_api_key
-MONGODB_URI=mongodb://localhost:27017
-MONGODB_DB_NAME=scheduleai
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 BACKEND_API_KEY=change-me-shared-api-key
 ```
 

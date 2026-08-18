@@ -1,10 +1,10 @@
 """
 backend/agent.py
-6-Node LangGraph Agent Workflow for Universal Service Booking
+6-Node LangGraph Agent Workflow for Universal Service Booking (Supabase-powered)
 ─────────────────────────────────────────────────────────────
 Node 1: Intent Extractor (with conversation history merge)
 Node 2: Goal Framer
-Node 3: MongoDB Query Builder
+Node 3: DB Query Builder
 Node 4: DB Retriever
 Node 5: Ranking Engine
 Node 6: Response Generator
@@ -68,7 +68,7 @@ class AgentState(TypedDict):
 
     intent: Optional[Dict[str, Any]]
     goal_frame: Optional[Dict[str, Any]]
-    mongo_query: Optional[Dict[str, Any]]
+    db_query: Optional[Dict[str, Any]]
     raw_services: Optional[List[Dict]]
     raw_providers: Optional[List[Dict]]
     availability_map: Optional[Dict[str, List[str]]]
@@ -237,14 +237,14 @@ def node_query_builder(state: AgentState) -> AgentState:
         intent.get("specific_service"),
     )
 
-    mongo_query: Dict[str, Any] = {
+    db_query: Dict[str, Any] = {
         "tags": tags,
         "category": goal.get("category"),
         "location_lower": filters["location"].lower() if filters.get("location") else None,
         "provider_name": filters.get("provider_name"),
     }
 
-    return {**state, "mongo_query": mongo_query}
+    return {**state, "db_query": db_query}
 
 
 async def node_db_retriever(state: AgentState) -> AgentState:
@@ -254,7 +254,7 @@ async def node_db_retriever(state: AgentState) -> AgentState:
 
     from database import find_providers_by_tags
 
-    query = state.get("mongo_query") or {}
+    query = state.get("db_query") or {}
     goal = state.get("goal_frame") or {}
     time_pref = goal.get("time_preference")
 
@@ -462,7 +462,7 @@ async def run_booking_agent(
         "history": history or [],
         "intent": None,
         "goal_frame": None,
-        "mongo_query": None,
+        "db_query": None,
         "raw_services": None,
         "raw_providers": None,
         "availability_map": None,

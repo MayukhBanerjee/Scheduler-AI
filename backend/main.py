@@ -1,6 +1,7 @@
-"""
+﻿"""
 backend/main.py
-FastAPI backend for Universal Service Booking AI System
+FastAPI backend for Universal Service Booking AI System (Supabase-powered)
+Author: Mayukh Banerjee
 """
 
 import os
@@ -12,7 +13,7 @@ from typing import Optional
 
 from models import ChatRequest, ChatResponse
 from agent import run_booking_agent
-from database import get_db, close_db
+from database import get_supabase, find_services, find_providers
 
 load_dotenv()
 
@@ -31,10 +32,12 @@ def verify_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🚀 ScheduleAI backend starting up...")
-    db = await get_db()
-    print(f"✅ MongoDB connected: {db.name}")
+    try:
+        sb = get_supabase()
+        print("✅ Supabase client initialized.")
+    except Exception as e:
+        print(f"⚠️ Supabase init note: {e}")
     yield
-    await close_db()
     print("👋 ScheduleAI backend shutting down.")
 
 
@@ -47,8 +50,8 @@ _cors_origins = [
 
 app = FastAPI(
     title="ScheduleAI — Universal Service Booking API",
-    description="AI-powered service booking backend with LangGraph agent",
-    version="2.1.0",
+    description="AI-powered service booking backend with LangGraph agent and Supabase",
+    version="2.2.0",
     lifespan=lifespan,
 )
 
@@ -66,7 +69,8 @@ async def health():
     return {
         "status": "ok",
         "service": "ScheduleAI Universal Booking API",
-        "version": "2.1.0",
+        "database": "Supabase PostgreSQL",
+        "version": "2.2.0",
     }
 
 
@@ -102,19 +106,17 @@ async def chat(request: ChatRequest):
 
 @app.get("/services", tags=["Services"])
 async def list_services(category: str = None, limit: int = 20):
-    from database import find_services
     query = {}
     if category:
-        query["category"] = {"$regex": category, "$options": "i"}
+        query["category"] = category
     services = await find_services(query, limit=limit)
     return {"services": services}
 
 
 @app.get("/providers", tags=["Providers"])
 async def list_providers(category: str = None, limit: int = 20):
-    from database import find_providers
     query = {}
     if category:
-        query["category"] = {"$regex": category, "$options": "i"}
+        query["category"] = category
     providers = await find_providers(query, limit=limit)
     return {"providers": providers}

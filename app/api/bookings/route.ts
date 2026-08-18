@@ -1,78 +1,9 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getDb } from "@/lib/mongodb";
-import { ObjectId } from "mongodb";
+import { supabaseAdmin } from "@/lib/supabase";
 
-const WEEKDAYS = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-];
-
-function resolveService(
-  provider: { services?: Array<Record<string, unknown>>; _id: ObjectId },
-  serviceId: string
-) {
-  const services = Array.isArray(provider.services) ? provider.services : [];
-  const pid = provider._id.toString();
-
-  // Prefer stable id field
-  let idx = services.findIndex((s) => s?.id === serviceId);
-  if (idx < 0 && serviceId.startsWith(`${pid}:`)) {
-    const n = Number(serviceId.split(":")[1]);
-    if (!Number.isNaN(n)) idx = n;
-  }
-  // Legacy embedded_{pid}_{i}
-  if (idx < 0 && serviceId.startsWith("embedded_")) {
-    const parts = serviceId.split("_");
-    const n = Number(parts[parts.length - 1]);
-    if (!Number.isNaN(n)) idx = n;
-  }
-  if (idx < 0 || idx >= services.length) return null;
-  return { service: services[idx], index: idx };
-}
-
-function getSlotsForDate(
-  availability: Record<string, string[]>,
-  date: string
-): { slots: string[]; sourceKey: string; fromWeekday: boolean } {
-  if (availability[date] && Array.isArray(availability[date])) {
-    return { slots: [...availability[date]], sourceKey: date, fromWeekday: false };
-  }
-  const d = new Date(`${date}T12:00:00`);
-  if (Number.isNaN(d.getTime())) {
-    return { slots: [], sourceKey: date, fromWeekday: false };
-  }
-  const day = WEEKDAYS[d.getDay()];
-  const weekdaySlots = availability[day];
-  if (Array.isArray(weekdaySlots)) {
-    return { slots: [...weekdaySlots], sourceKey: day, fromWeekday: true };
-  }
-  return { slots: [], sourceKey: day, fromWeekday: true };
-}
-
-async function ensureBookingIndexes(db: Awaited<ReturnType<typeof getDb>>) {
-  try {
-    await db.collection("bookings").createIndex(
-      { provider_id: 1, date: 1, time: 1 },
-      {
-        unique: true,
-        // Atlas/Mongo partial indexes do not support $ne — use $in instead
-        partialFilterExpression: {
-          status: { $in: ["confirmed", "pending", "completed"] },
-        },
-        name: "unique_active_provider_slot",
-      }
-    );
-  } catch {
-    // Index may already exist with different options — ignore
-  }
-}
-
+// ─── POST /api/bookings ────────────────────────────────────────────────────────
+// Creates a booking. Calls the create_booking_safe RPC for atomic slot removal.
 export async function POST(req: Request) {
   try {
     const session = await getSessionFromCookies();
@@ -91,117 +22,132 @@ export async function POST(req: Request) {
     }
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return NextResponse.json(
-        { error: "date must be YYYY-MM-DD" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "date must be YYYY-MM-DD" }, { status: 400 });
     }
 
-    if (!ObjectId.isValid(provider_id)) {
-      return NextResponse.json({ error: "Invalid provider_id" }, { status: 400 });
+    // Resolve provider_id: may be a UUID (new) or legacy ObjectId string.
+    // Try to find by id first, then by user_id for legacy compat.
+    let providerProfileId: string = provider_id;
+
+    const { data: providerByProfileId } = await supabaseAdmin
+      .from("provider_profiles")
+      .select("id, business_name, location, user_id")
+      .eq("id", provider_id)
+      .maybeSingle();
+
+    // If not found by profile id, try finding by user_id (migration compat)
+    let provider = providerByProfileId;
+    if (!provider) {
+      const { data: providerByUserId } = await supabaseAdmin
+        .from("provider_profiles")
+        .select("id, business_name, location, user_id")
+        .eq("user_id", provider_id)
+        .maybeSingle();
+      provider = providerByUserId;
+      if (provider) providerProfileId = provider.id;
     }
 
-    const db = await getDb();
-    await ensureBookingIndexes(db);
-
-    const provider = await db.collection("service_providers").findOne({
-      _id: new ObjectId(provider_id),
-    });
     if (!provider) {
       return NextResponse.json({ error: "Provider not found" }, { status: 404 });
     }
 
-    const resolved = resolveService(provider as { services?: Array<Record<string, unknown>>; _id: ObjectId }, service_id);
-    const service = resolved?.service;
-    const stableServiceId =
-      (service?.id as string) ||
-      (resolved ? `${provider_id}:${resolved.index}` : String(service_id));
+    // Resolve service: try by UUID, then by legacy_id
+    let resolvedService: {
+      id: string; name: string; price: number; duration_minutes: number;
+    } | null = null;
 
-    const availability = (provider.availability || {}) as Record<string, string[]>;
-    const { slots, fromWeekday } = getSlotsForDate(availability, date);
+    const { data: svcById } = await supabaseAdmin
+      .from("services")
+      .select("id, name, price, duration_minutes")
+      .eq("id", service_id)
+      .eq("provider_id", providerProfileId)
+      .maybeSingle();
 
-    if (!slots.includes(time)) {
+    resolvedService = svcById;
+
+    if (!resolvedService) {
+      const { data: svcByLegacy } = await supabaseAdmin
+        .from("services")
+        .select("id, name, price, duration_minutes")
+        .eq("legacy_id", service_id)
+        .maybeSingle();
+      resolvedService = svcByLegacy;
+    }
+
+    // Check the requested slot is available
+    const { data: slots } = await supabaseAdmin
+      .rpc("get_available_slots", {
+        p_provider_profile_id: providerProfileId,
+        p_date: date,
+      });
+
+    const requestedTime = time.substring(0, 5); // normalize "09:00:00" → "09:00"
+    const slotAvailable = slots?.some(
+      (s: { slot_time: string; is_available: boolean }) =>
+        s.slot_time.substring(0, 5) === requestedTime && s.is_available
+    );
+
+    if (!slotAvailable) {
       return NextResponse.json(
         { error: "That time slot is no longer available" },
         { status: 409 }
       );
     }
 
-    const providerOid = new ObjectId(provider_id);
-    const conflict = await db.collection("bookings").findOne({
-      provider_id: providerOid,
-      date,
-      time,
-      status: { $ne: "cancelled" },
-    });
-    if (conflict) {
-      return NextResponse.json(
-        { error: "This slot is already booked" },
-        { status: 409 }
-      );
-    }
+    // Fetch user info for denormalized fields
+    const { data: userRow } = await supabaseAdmin
+      .from("users")
+      .select("name, email")
+      .eq("id", session.userId)
+      .single();
 
-    const user = await db.collection("users").findOne({
-      _id: new ObjectId(session.userId),
-    });
+    // Get provider email
+    const { data: providerUserRow } = await supabaseAdmin
+      .from("users")
+      .select("email")
+      .eq("id", provider.user_id)
+      .single();
 
-    const booking = {
-      user_id: new ObjectId(session.userId),
-      user_email: session.email,
-      user_name: user?.name || session.email,
-      service_id: stableServiceId,
-      provider_id: providerOid,
-      provider_name: provider.name || "Provider",
-      provider_email: provider.email || "",
-      location: provider.location || "",
-      service_name: (service?.name as string) || service_name || "Service",
-      price: typeof service?.price === "number" ? service.price : 0,
-      date,
-      time,
-      duration_minutes:
-        duration_minutes ||
-        (typeof service?.duration_minutes === "number" ? service.duration_minutes : 60),
-      status: "confirmed",
-      created_at: new Date(),
-    };
+    const durationMin = duration_minutes ||
+      resolvedService?.duration_minutes || 60;
+    const price = resolvedService?.price ?? 0;
+    const finalServiceName = resolvedService?.name || service_name || "Service";
 
-    let result;
-    try {
-      result = await db.collection("bookings").insertOne(booking);
-    } catch (err: unknown) {
-      const code = err && typeof err === "object" && "code" in err ? (err as { code: number }).code : 0;
-      if (code === 11000) {
-        return NextResponse.json(
-          { error: "This slot is already booked" },
-          { status: 409 }
-        );
+    // Call atomic RPC — handles conflict check + slot removal in one transaction
+    const { data: bookingId, error: rpcError } = await supabaseAdmin
+      .rpc("create_booking_safe", {
+        p_user_id: session.userId,
+        p_provider_id: providerProfileId,
+        p_service_id: resolvedService?.id ?? null,
+        p_date: date,
+        p_start_time: requestedTime,
+        p_service_name: finalServiceName,
+        p_provider_name: provider.business_name,
+        p_provider_email: providerUserRow?.email ?? "",
+        p_user_email: session.email,
+        p_user_name: userRow?.name ?? session.email,
+        p_location: provider.location ?? "",
+        p_price: price,
+        p_duration_minutes: durationMin,
+      });
+
+    if (rpcError) {
+      if (rpcError.message?.includes("SLOT_TAKEN")) {
+        return NextResponse.json({ error: "This slot is already booked" }, { status: 409 });
       }
-      throw err;
+      throw new Error(rpcError.message);
     }
-
-    // Consume slot via date-key override (preserve recurring weekday template)
-    const remaining = slots.filter((s) => s !== time);
-    const nextAvailability = { ...availability, [date]: remaining };
-    // If we were reading from weekday and date key didn't exist, we still write date override
-    if (fromWeekday && !availability[date]) {
-      // already handled by writing date key
-    }
-
-    await db.collection("service_providers").updateOne(
-      { _id: providerOid },
-      { $set: { availability: nextAvailability } }
-    );
 
     return NextResponse.json({
       success: true,
-      booking_id: result.insertedId.toString(),
+      booking_id: bookingId,
       booking: {
-        service_name: booking.service_name,
-        provider_name: booking.provider_name,
-        location: booking.location,
-        date: booking.date,
-        time: booking.time,
-        status: booking.status,
+        service_name: finalServiceName,
+        provider_name: provider.business_name,
+        location: provider.location,
+        date,
+        time: requestedTime,
+        status: "confirmed",
       },
     });
   } catch (error) {
@@ -210,6 +156,7 @@ export async function POST(req: Request) {
   }
 }
 
+// ─── GET /api/bookings ─────────────────────────────────────────────────────────
 export async function GET(req: Request) {
   try {
     const session = await getSessionFromCookies();
@@ -218,41 +165,34 @@ export async function GET(req: Request) {
     }
     if (session.role !== "user") {
       return NextResponse.json(
-        { error: "Only customer accounts can book appointments" },
+        { error: "Only customer accounts can view bookings this way" },
         { status: 403 }
       );
     }
 
-    const db = await getDb();
     const { searchParams } = new URL(req.url);
-
-    let query: Record<string, unknown> = {};
-    if (session.role === "user") {
-      query = { user_id: new ObjectId(session.userId) };
-    } else {
-      const providerId = searchParams.get("provider_id") || session.userId;
-      query = { provider_id: new ObjectId(providerId) };
-    }
-
     const statusFilter = searchParams.get("status");
+
+    let query = supabaseAdmin
+      .from("bookings")
+      .select("*")
+      .eq("user_id", session.userId)
+      .order("date", { ascending: false })
+      .order("start_time", { ascending: false })
+      .limit(50);
+
     if (statusFilter) {
-      query.status = statusFilter;
+      query = query.eq("status", statusFilter);
     }
 
-    const bookings = await db
-      .collection("bookings")
-      .find(query)
-      .sort({ date: -1, time: -1 })
-      .limit(50)
-      .toArray();
+    const { data: bookings, error } = await query;
+    if (error) throw error;
 
     return NextResponse.json({
-      bookings: bookings.map((b) => ({
+      bookings: (bookings ?? []).map((b) => ({
         ...b,
-        _id: b._id.toString(),
-        user_id: b.user_id?.toString(),
-        service_id: b.service_id?.toString?.() ?? b.service_id,
-        provider_id: b.provider_id?.toString(),
+        _id: b.id,
+        time: b.start_time?.substring(0, 5),
       })),
     });
   } catch (error) {

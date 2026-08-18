@@ -1,40 +1,30 @@
-"""
+﻿"""
 backend/seed_db.py
-Seeds MongoDB with sample service providers (embedded services config) and demo users.
-
-Schema changes:
-  - `search_tags`   : flat, deduped, lowercase array at provider root (replaces buried services.tags index)
-  - `location_lower`: lowercase location string for efficient case-insensitive prefix matching
+Seeds Supabase with sample service providers, services, availability slots, and demo users.
+Author: Mayukh Banerjee
 
 Run: python seed_db.py
 """
 
-import asyncio
 import os
 import sys
-from datetime import datetime
-from typing import List
 import bcrypt
-from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
-from bson import ObjectId
 
-# Force UTF-8 output so emoji print statements work on Windows terminals
+# Force UTF-8 output
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 load_dotenv()
 
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-DB_NAME = os.getenv("MONGODB_DB_NAME", "scheduleai")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(12)).decode()
 
 
-# ─── Category keyword expansion map (mirrors matching.py CATEGORY_MAP) ────────
-# Used to auto-expand search_tags on the provider root document.
 CATEGORY_TAG_MAP = {
     "Beauty & Hair": [
         "hair", "haircut", "salon", "trim", "style", "blowout", "color",
@@ -75,273 +65,264 @@ CATEGORY_TAG_MAP = {
 }
 
 
-def compute_search_tags(category: str, services: list) -> List[str]:
-    """
-    Build a flat, deduplicated, lowercase search_tags list for a provider.
-
-    Sources (in priority order):
-    1. All category-level keywords from CATEGORY_TAG_MAP
-    2. All service-level tags from embedded services
-    3. Meaningful words from service names (words >= 4 chars, excluding stop words)
-    """
+def compute_search_tags(category: str, services: list) -> list:
     STOP_WORDS = {"with", "and", "for", "the", "your", "from", "this", "that"}
     tags = set()
-
-    # 1. Category-level keywords
     tags.update(t.lower() for t in CATEGORY_TAG_MAP.get(category, []))
-
-    # 2. Per-service tags
     for svc in services:
         for tag in svc.get("tags", []):
             tags.add(tag.lower().strip())
-
-        # 3. Meaningful words from service name
         for word in svc.get("name", "").lower().split():
             if len(word) >= 4 and word not in STOP_WORDS:
                 tags.add(word)
-
     return sorted(tags)
 
 
-# ─── Provider Documents ────────────────────────────────────────────────────────
-
-def make_providers() -> list:
-    """Build provider list with auto-computed search_tags and location_lower."""
-    raw = [
-        {
-            "_id": ObjectId(),
-            "name": "The Style Studio",
-            "ownerName": "Priya Sharma",
-            "email": "thestylestudio@demo.com",
-            "passwordHash": hash_password("demo1234"),
-            "category": "Beauty & Hair",
-            "location": "Koramangala, Bangalore",
-            "description": "Premium hair salon focusing on advanced coloring, highlighting, and bespoke makeovers.",
-            "services": [
-                {
-                    "name": "Hair Cut & Style",
-                    "price": 800,
-                    "duration_minutes": 60,
-                    "description": "Professional haircut and styling tailored to your face shape.",
-                    "tags": ["haircut", "styling", "hair", "beauty", "salon"],
-                },
-                {
-                    "name": "Hair Color & Highlights",
-                    "price": 2500,
-                    "duration_minutes": 120,
-                    "description": "Full hair coloring or highlights using premium products.",
-                    "tags": ["color", "highlights", "salon", "hair"],
-                },
-            ],
-            "availability": {
-                "monday":    ["09:00", "10:30", "12:00", "14:00", "16:00"],
-                "tuesday":   ["09:00", "11:00", "13:00", "15:00"],
-                "wednesday": ["10:00", "12:00", "14:00", "17:00"],
-                "thursday":  ["09:00", "11:00", "13:30", "15:30"],
-                "friday":    ["09:00", "10:30", "14:00", "16:00"],
-                "saturday":  ["10:00", "12:00", "14:00"],
+DEMO_DATA = [
+    {
+        "user_id": "b0000000-0000-0000-0000-000000000001",
+        "profile_id": "c0000000-0000-0000-0000-000000000001",
+        "name": "The Style Studio",
+        "ownerName": "Priya Sharma",
+        "email": "thestylestudio@demo.com",
+        "category": "Beauty & Hair",
+        "location": "Koramangala, Bangalore",
+        "description": "Premium hair salon focusing on advanced coloring, highlighting, and bespoke makeovers.",
+        "rating": 4.9,
+        "services": [
+            {
+                "id": "d0000000-0000-0000-0000-000000000001",
+                "name": "Hair Cut & Style",
+                "price": 800,
+                "duration_minutes": 60,
+                "description": "Professional haircut and styling tailored to your face shape.",
+                "tags": ["haircut", "styling", "hair", "beauty", "salon"],
             },
-            "rating": 4.9,
-            "role": "provider",
-            "createdAt": datetime.utcnow(),
-        },
-        {
-            "_id": ObjectId(),
-            "name": "City Dental Clinic",
-            "ownerName": "Dr. Arun Mehta",
-            "email": "citydentalclinic@demo.com",
-            "passwordHash": hash_password("demo1234"),
-            "category": "Dental",
-            "location": "Indiranagar, Bangalore",
-            "description": "Advanced dental clinic covering comprehensive oral hygiene, cavities, and aesthetic tooth care.",
-            "services": [
-                {
-                    "name": "Dental Checkup & Cleaning",
-                    "price": 600,
-                    "duration_minutes": 60,
-                    "description": "Full dental examination and professional teeth cleaning.",
-                    "tags": ["checkup", "cleaning", "teeth", "dentist", "dental"],
-                },
-                {
-                    "name": "Teeth Whitening",
-                    "price": 3500,
-                    "duration_minutes": 90,
-                    "description": "Professional in-office teeth whitening treatment.",
-                    "tags": ["whitening", "teeth", "smile", "dental"],
-                },
-            ],
-            "availability": {
-                "monday":    ["09:30", "11:00", "14:00", "16:00"],
-                "tuesday":   ["10:00", "12:00", "15:00"],
-                "wednesday": ["09:30", "11:00", "14:30", "16:30"],
-                "thursday":  ["10:00", "13:00", "15:30"],
-                "friday":    ["09:30", "11:30", "14:00"],
-                "saturday":  ["10:00", "12:00"],
+            {
+                "id": "d0000000-0000-0000-0000-000000000002",
+                "name": "Hair Color & Highlights",
+                "price": 2500,
+                "duration_minutes": 120,
+                "description": "Full hair coloring or highlights using premium products.",
+                "tags": ["color", "highlights", "salon", "hair"],
             },
-            "rating": 4.8,
-            "role": "provider",
-            "createdAt": datetime.utcnow(),
+        ],
+        "availability": {
+            "monday":    ["09:00", "10:30", "12:00", "14:00", "16:00"],
+            "tuesday":   ["09:00", "11:00", "13:00", "15:00"],
+            "wednesday": ["10:00", "12:00", "14:00", "17:00"],
+            "thursday":  ["09:00", "11:00", "13:30", "15:30"],
+            "friday":    ["09:00", "10:30", "14:00", "16:00"],
+            "saturday":  ["10:00", "12:00", "14:00"],
         },
-        {
-            "_id": ObjectId(),
-            "name": "Serenity Spa & Wellness",
-            "ownerName": "Kavya Nair",
-            "email": "serenityspa@demo.com",
-            "passwordHash": hash_password("demo1234"),
-            "category": "Wellness & Spa",
-            "location": "HSR Layout, Bangalore",
-            "description": "A tranquil wellness center dedicated to ultimate body relaxation and deep tissue therapeutics.",
-            "services": [
-                {
-                    "name": "Swedish Massage",
-                    "price": 1200,
-                    "duration_minutes": 60,
-                    "description": "Relaxing full-body Swedish massage for stress relief.",
-                    "tags": ["massage", "swedish", "relaxation", "spa", "body"],
-                },
-                {
-                    "name": "Deep Tissue Massage",
-                    "price": 1800,
-                    "duration_minutes": 90,
-                    "description": "Targeted deep tissue massage for muscle tension and recovery.",
-                    "tags": ["massage", "therapy", "pain relief", "deep tissue"],
-                },
-            ],
-            "availability": {
-                "tuesday":   ["11:00", "13:00", "15:00", "17:00"],
-                "wednesday": ["10:00", "12:00", "14:00", "16:00"],
-                "thursday":  ["11:00", "13:00", "15:30"],
-                "friday":    ["10:00", "12:00", "14:00", "16:30"],
-                "saturday":  ["09:00", "11:00", "13:00", "15:00"],
-                "sunday":    ["10:00", "12:00", "14:00"],
+    },
+    {
+        "user_id": "b0000000-0000-0000-0000-000000000002",
+        "profile_id": "c0000000-0000-0000-0000-000000000002",
+        "name": "City Dental Clinic",
+        "ownerName": "Dr. Arun Mehta",
+        "email": "citydentalclinic@demo.com",
+        "category": "Dental",
+        "location": "Indiranagar, Bangalore",
+        "description": "Advanced dental clinic covering comprehensive oral hygiene, cavities, and aesthetic tooth care.",
+        "rating": 4.8,
+        "services": [
+            {
+                "id": "d0000000-0000-0000-0000-000000000003",
+                "name": "Dental Checkup & Cleaning",
+                "price": 600,
+                "duration_minutes": 60,
+                "description": "Full dental examination and professional teeth cleaning.",
+                "tags": ["checkup", "cleaning", "teeth", "dentist", "dental"],
             },
-            "rating": 4.7,
-            "role": "provider",
-            "createdAt": datetime.utcnow(),
-        },
-        {
-            "_id": ObjectId(),
-            "name": "FitZone Personal Training",
-            "ownerName": "Rahul Verma",
-            "email": "fitzonetraining@demo.com",
-            "passwordHash": hash_password("demo1234"),
-            "category": "Fitness",
-            "location": "Whitefield, Bangalore",
-            "description": "One-on-one fitness regimens, strength coaching, and dedicated athletic training.",
-            "services": [
-                {
-                    "name": "Personal Training Session",
-                    "price": 1000,
-                    "duration_minutes": 60,
-                    "description": "Personalized coaching tailored to fitness goals.",
-                    "tags": ["training", "gym", "workout", "strength", "personal trainer"],
-                },
-                {
-                    "name": "Yoga Class",
-                    "price": 600,
-                    "duration_minutes": 60,
-                    "description": "Guided yoga session for flexibility and mindfulness.",
-                    "tags": ["yoga", "flexibility", "wellness", "pilates"],
-                },
-            ],
-            "availability": {
-                "monday":    ["06:00", "07:00", "08:00", "17:00", "18:00", "19:00"],
-                "tuesday":   ["06:00", "07:30", "17:00", "18:30"],
-                "wednesday": ["06:00", "07:00", "08:00", "18:00", "19:00"],
-                "thursday":  ["06:30", "08:00", "17:00", "18:30"],
-                "friday":    ["06:00", "07:30", "17:30", "19:00"],
-                "saturday":  ["07:00", "08:30", "10:00"],
+            {
+                "id": "d0000000-0000-0000-0000-000000000004",
+                "name": "Teeth Whitening",
+                "price": 3500,
+                "duration_minutes": 90,
+                "description": "Professional in-office teeth whitening treatment.",
+                "tags": ["whitening", "teeth", "smile", "dental"],
             },
-            "rating": 4.6,
-            "role": "provider",
-            "createdAt": datetime.utcnow(),
+        ],
+        "availability": {
+            "monday":    ["09:30", "11:00", "14:00", "16:00"],
+            "tuesday":   ["10:00", "12:00", "15:00"],
+            "wednesday": ["09:30", "11:00", "14:30", "16:30"],
+            "thursday":  ["10:00", "13:00", "15:30"],
+            "friday":    ["09:30", "11:30", "14:00"],
+            "saturday":  ["10:00", "12:00"],
         },
-    ]
+    },
+    {
+        "user_id": "b0000000-0000-0000-0000-000000000003",
+        "profile_id": "c0000000-0000-0000-0000-000000000003",
+        "name": "Serenity Spa & Wellness",
+        "ownerName": "Kavya Nair",
+        "email": "serenityspa@demo.com",
+        "category": "Wellness & Spa",
+        "location": "HSR Layout, Bangalore",
+        "description": "A tranquil wellness center dedicated to ultimate body relaxation and deep tissue therapeutics.",
+        "rating": 4.7,
+        "services": [
+            {
+                "id": "d0000000-0000-0000-0000-000000000005",
+                "name": "Swedish Massage",
+                "price": 1200,
+                "duration_minutes": 60,
+                "description": "Relaxing full-body Swedish massage for stress relief.",
+                "tags": ["massage", "swedish", "relaxation", "spa", "body"],
+            },
+            {
+                "id": "d0000000-0000-0000-0000-000000000006",
+                "name": "Deep Tissue Massage",
+                "price": 1800,
+                "duration_minutes": 90,
+                "description": "Targeted deep tissue massage for muscle tension and recovery.",
+                "tags": ["massage", "therapy", "pain relief", "deep tissue"],
+            },
+        ],
+        "availability": {
+            "tuesday":   ["11:00", "13:00", "15:00", "17:00"],
+            "wednesday": ["10:00", "12:00", "14:00", "16:00"],
+            "thursday":  ["11:00", "13:00", "15:30"],
+            "friday":    ["10:00", "12:00", "14:00", "16:30"],
+            "saturday":  ["09:00", "11:00", "13:00", "15:00"],
+            "sunday":    ["10:00", "12:00", "14:00"],
+        },
+    },
+    {
+        "user_id": "b0000000-0000-0000-0000-000000000004",
+        "profile_id": "c0000000-0000-0000-0000-000000000004",
+        "name": "FitZone Personal Training",
+        "ownerName": "Rahul Verma",
+        "email": "fitzonetraining@demo.com",
+        "category": "Fitness",
+        "location": "Whitefield, Bangalore",
+        "description": "One-on-one fitness regimens, strength coaching, and dedicated athletic training.",
+        "rating": 4.6,
+        "services": [
+            {
+                "id": "d0000000-0000-0000-0000-000000000007",
+                "name": "Personal Training Session",
+                "price": 1000,
+                "duration_minutes": 60,
+                "description": "Personalized coaching tailored to fitness goals.",
+                "tags": ["training", "gym", "workout", "strength", "personal trainer"],
+            },
+            {
+                "id": "d0000000-0000-0000-0000-000000000008",
+                "name": "Yoga Class",
+                "price": 600,
+                "duration_minutes": 60,
+                "description": "Guided yoga session for flexibility and mindfulness.",
+                "tags": ["yoga", "flexibility", "wellness", "pilates"],
+            },
+        ],
+        "availability": {
+            "monday":    ["06:00", "07:00", "08:00", "17:00", "18:00", "19:00"],
+            "tuesday":   ["06:00", "07:30", "17:00", "18:30"],
+            "wednesday": ["06:00", "07:00", "08:00", "18:00", "19:00"],
+            "thursday":  ["06:30", "08:00", "17:00", "18:30"],
+            "friday":    ["06:00", "07:30", "17:30", "19:00"],
+            "saturday":  ["07:00", "08:30", "10:00"],
+        },
+    },
+]
 
-    # Auto-compute search_tags, location_lower, and stable service ids
-    for p in raw:
-        pid = str(p["_id"])
-        for i, svc in enumerate(p.get("services", [])):
-            svc["id"] = f"{pid}:{i}"
-        p["search_tags"] = compute_search_tags(p["category"], p["services"])
-        p["location_lower"] = p["location"].lower()
 
-    return raw
+def seed():
+    from supabase import create_client
 
+    if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        print("❌ Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in backend/.env")
+        return
 
-SERVICE_PROVIDERS = make_providers()
+    sb = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    print(f"🌱 Seeding Supabase database at {SUPABASE_URL}...")
 
+    pw_hash = hash_password("demo1234")
 
-async def seed():
-    client = AsyncIOMotorClient(MONGODB_URI)
-    db = client[DB_NAME]
-
-    print(f"🌱 Seeding database: {DB_NAME} at {MONGODB_URI}")
-
-    # Drop existing collections
-    for col in ["service_providers", "services", "users", "bookings"]:
-        await db[col].drop()
-        print(f"  🗑  Dropped '{col}' collection")
-
-    # Insert providers with embedded services + denormalized search_tags
-    await db["service_providers"].insert_many(SERVICE_PROVIDERS)
-    print(f"  ✅ Inserted {len(SERVICE_PROVIDERS)} service providers (with search_tags)")
-
-    # Preview tags for one provider
-    for p in SERVICE_PROVIDERS[:1]:
-        print(f"     Sample search_tags ({p['name']}): {p['search_tags']}")
-
-    # Insert demo user
+    # 1. Insert demo user
     demo_user = {
-        "name": "Demo User",
+        "id": "a0000000-0000-0000-0000-000000000001",
         "email": "demo@scheduleai.com",
-        "passwordHash": hash_password("demo1234"),
+        "name": "Demo User",
         "role": "user",
-        "createdAt": datetime.utcnow(),
+        "password_hash": pw_hash,
     }
-    await db["users"].insert_one(demo_user)
-    print("  ✅ Inserted demo user (email: demo@scheduleai.com, password: demo1234)")
+    sb.from_("users").upsert(demo_user).execute()
+    print("  ✅ Inserted demo user: demo@scheduleai.com (pw: demo1234)")
 
-    # ─── Indexes ────────────────────────────────────────────────────────────────
-    #
-    # search_tags  : flat array at root → multikey B-tree index, $in queries are
-    #                fully index-covered. Replaces broken services.tags regex pattern.
-    # location_lower: lowercase string → fast prefix/regex matches without $options:"i"
-    # category     : equality filter used alongside search_tags for narrowing
-    # email        : unique lookup for auth
-    # rating       : for sort/filter by rating
-    #
-    await db["service_providers"].create_index([("search_tags", 1)])
-    await db["service_providers"].create_index([("location_lower", 1)])
-    await db["service_providers"].create_index([("category", 1)])
-    await db["service_providers"].create_index([("rating", -1)])
-    await db["service_providers"].create_index([("email", 1)], unique=True)
+    # 2. Insert providers, profiles, services, tags, availability
+    for p in DEMO_DATA:
+        # User
+        sb.from_("users").upsert({
+            "id": p["user_id"],
+            "email": p["email"],
+            "name": p["name"],
+            "role": "provider",
+            "password_hash": pw_hash,
+        }).execute()
 
-    # Compound: category + search_tags — covers the most common agent query pattern
-    await db["service_providers"].create_index([("category", 1), ("search_tags", 1)])
+        # Profile
+        sb.from_("provider_profiles").upsert({
+            "id": p["profile_id"],
+            "user_id": p["user_id"],
+            "business_name": p["name"],
+            "owner_name": p["ownerName"],
+            "category": p["category"],
+            "location": p["location"],
+            "description": p["description"],
+            "rating": p["rating"],
+            "is_verified": True,
+        }).execute()
 
-    await db["users"].create_index([("email", 1)], unique=True)
-    await db["bookings"].create_index([("user_id", 1)])
-    await db["bookings"].create_index([("provider_id", 1)])
-    await db["bookings"].create_index([("date", 1)])
-    # Prevent double-booking the same provider slot (active statuses only).
-    # Atlas/Mongo partial indexes do not support $ne — use $in instead.
-    await db["bookings"].create_index(
-        [("provider_id", 1), ("date", 1), ("time", 1)],
-        unique=True,
-        partialFilterExpression={"status": {"$in": ["confirmed", "pending", "completed"]}},
-        name="unique_active_provider_slot",
-    )
-    print("  ✅ Created optimized indexes")
+        # Search tags
+        search_tags = compute_search_tags(p["category"], p["services"])
+        tag_rows = [{"provider_id": p["profile_id"], "tag": tag} for tag in search_tags]
+        if tag_rows:
+            sb.from_("provider_search_tags").upsert(tag_rows, on_conflict="provider_id,tag").execute()
 
-    client.close()
-    print("\n🎉 Database seeded successfully!")
+        # Services & service tags
+        for i, svc in enumerate(p["services"]):
+            legacy_id = f"{p['user_id']}:{i}"
+            sb.from_("services").upsert({
+                "id": svc["id"],
+                "provider_id": p["profile_id"],
+                "name": svc["name"],
+                "category": p["category"],
+                "description": svc["description"],
+                "price": svc["price"],
+                "duration_minutes": svc["duration_minutes"],
+                "sort_order": i,
+                "legacy_id": legacy_id,
+                "is_active": True,
+            }).execute()
+
+            st_rows = [{"service_id": svc["id"], "tag": tag} for tag in svc.get("tags", [])]
+            if st_rows:
+                sb.from_("service_tags").upsert(st_rows, on_conflict="service_id,tag").execute()
+
+        # Availability slots
+        slot_rows = []
+        for day, slots in p.get("availability", {}).items():
+            for slot_time in slots:
+                slot_rows.append({
+                    "provider_id": p["profile_id"],
+                    "day_of_week": day,
+                    "start_time": slot_time,
+                    "is_booked": False,
+                })
+        if slot_rows:
+            sb.from_("availability_slots").insert(slot_rows).execute()
+
+        print(f"  ✅ Inserted provider: {p['name']} ({p['email']})")
+
+    print("\n🎉 Supabase database seeded successfully!")
     print("  Customer : demo@scheduleai.com / demo1234")
-    print("  Provider : thestylestudio@demo.com / demo1234")
-    print("  Provider : citydentalclinic@demo.com / demo1234")
-    print("  Provider : serenityspa@demo.com / demo1234")
-    print("  Provider : fitzonetraining@demo.com / demo1234")
+    for p in DEMO_DATA:
+        print(f"  Provider : {p['email']} / demo1234")
 
 
 if __name__ == "__main__":
-    asyncio.run(seed())
+    seed()

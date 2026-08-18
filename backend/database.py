@@ -1,62 +1,68 @@
-"""
+﻿"""
 backend/database.py
-Async MongoDB connection and CRUD helpers using motor
+Async Supabase query helpers — replaces MongoDB motor client.
+Author: Mayukh Banerjee
+
+All functions mirror the original MongoDB signatures so agent.py
+and matching.py require NO changes — only this file changes.
 """
 
 import os
 import re
 from typing import Optional, List, Dict, Any
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from bson import ObjectId
 from dotenv import load_dotenv
 
 load_dotenv()
 
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-DB_NAME = os.getenv("MONGODB_DB_NAME", "scheduleai")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
-_client: Optional[AsyncIOMotorClient] = None
-_db: Optional[AsyncIOMotorDatabase] = None
-
-
-async def get_db() -> AsyncIOMotorDatabase:
-    global _client, _db
-    if _db is None:
-        _client = AsyncIOMotorClient(MONGODB_URI)
-        _db = _client[DB_NAME]
-    return _db
+# Lazy-initialized Supabase async client
+_supabase = None
 
 
-async def close_db():
-    global _client, _db
-    if _client:
-        _client.close()
-        _client = None
-        _db = None
+def get_supabase():
+    global _supabase
+    if _supabase is None:
+        from supabase import create_client, Client
+        if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+            raise RuntimeError(
+                "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in backend/.env"
+            )
+        _supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    return _supabase
 
 
 # ─── Service Queries ──────────────────────────────────────────────────────────
 
 async def find_services(query: Dict[str, Any], limit: int = 20) -> List[Dict]:
-    db = await get_db()
-    cursor = db["services"].find(query).limit(limit)
-    results = []
-    async for doc in cursor:
-        doc["_id"] = str(doc["_id"])
-        if "provider_id" in doc:
-            doc["provider_id"] = str(doc["provider_id"])
-        results.append(doc)
-    return results
+    """Fetch active services, optionally filtered by category."""
+    sb = get_supabase()
+    q = sb.from_("service_catalog").select("*").limit(limit)
+
+    if query.get("category"):
+        q = q.eq("category", query["category"])
+
+    result = q.execute()
+    rows = result.data or []
+    # Normalize to match old MongoDB document shape
+    return [_normalize_service(r) for r in rows]
 
 
 async def find_providers(query: Dict[str, Any], limit: int = 20) -> List[Dict]:
-    db = await get_db()
-    cursor = db["service_providers"].find(query).limit(limit)
-    results = []
-    async for doc in cursor:
-        doc["_id"] = str(doc["_id"])
-        results.append(doc)
-    return results
+    """Fetch providers, optionally filtered by category."""
+    sb = get_supabase()
+    q = (
+        sb.from_("provider_discovery")
+        .select("*")
+        .order("rating", desc=True)
+        .limit(limit)
+    )
+    if query.get("category"):
+        q = q.eq("category", query["category"])
+
+    result = q.execute()
+    return [_normalize_provider(r) for r in (result.data or [])]
 
 
 async def find_providers_by_tags(
@@ -67,99 +73,185 @@ async def find_providers_by_tags(
     limit: int = 30,
 ) -> List[Dict]:
     """
-    Primary agent retrieval path — uses the denormalized `search_tags` index.
-
-    Query uses `$in` on a flat array field, which MongoDB resolves with a
-    multikey B-tree index scan (O log n) rather than a collection scan.
-    No regex, no $elemMatch, no token cost.
-
-    Priority logic:
-      1. `search_tags $in [tags]` — main semantic match (index-covered)
-      2. `category` — optional secondary equality filter (compound index)
-      3. `location_lower` — optional prefix-regex on pre-lowercased field
-      4. `name` — optional provider name filter (case-insensitive regex)
+    Primary agent retrieval path — mirrors MongoDB find_providers_by_tags().
+    Calls the search_providers_by_tags() PostgreSQL RPC function which uses
+    the GIN-indexed provider_search_tags table.
     """
-    db = await get_db()
+    sb = get_supabase()
 
-    query: Dict[str, Any] = {}
+    result = sb.rpc(
+        "search_providers_by_tags",
+        {
+            "p_tags": tags,
+            "p_category": category,
+            "p_location_like": location_lower,
+            "p_provider_name": provider_name,
+            "p_limit": limit,
+        },
+    ).execute()
 
-    if tags:
-        query["search_tags"] = {"$in": tags}
+    providers = result.data or []
 
-    if category and category != "General":
-        query["category"] = category
+    # For each provider, fetch their embedded services so the agent can expand them
+    enriched = []
+    for p in providers:
+        svc_result = (
+            sb.from_("services")
+            .select("id, name, category, description, price, duration_minutes, legacy_id, service_tags(tag)")
+            .eq("provider_id", p["provider_id"])
+            .eq("is_active", True)
+            .order("sort_order")
+            .execute()
+        )
+        services = []
+        for s in (svc_result.data or []):
+            tags_list = [t["tag"] for t in (s.get("service_tags") or [])]
+            services.append({
+                "id": s.get("legacy_id") or s["id"],
+                "name": s["name"],
+                "price": s["price"],
+                "duration_minutes": s["duration_minutes"],
+                "description": s.get("description", ""),
+                "tags": tags_list,
+            })
 
-    if location_lower:
-        # Prefix match on pre-lowercased field — avoids $options:"i" overhead
-        query["location_lower"] = {"$regex": f"^{re.escape(location_lower)}"}
+        # Also fetch availability slots
+        av_result = (
+            sb.from_("availability_slots")
+            .select("day_of_week, specific_date, start_time, is_booked")
+            .eq("provider_id", p["provider_id"])
+            .eq("is_booked", False)
+            .execute()
+        )
+        availability: Dict[str, List[str]] = {}
+        for slot in (av_result.data or []):
+            key = slot.get("specific_date") or slot.get("day_of_week") or "unknown"
+            t = slot["start_time"]
+            if isinstance(t, str):
+                t = t[:5]  # "09:00:00" -> "09:00"
+            if key not in availability:
+                availability[key] = []
+            availability[key].append(t)
 
-    if provider_name:
-        query["name"] = {"$regex": provider_name, "$options": "i"}
+        enriched.append({
+            "_id": p["provider_id"],          # agent uses _id to match providers
+            "name": p["business_name"],
+            "ownerName": p.get("owner_name", ""),
+            "email": p.get("email", ""),
+            "category": p["category"],
+            "location": p.get("location", ""),
+            "location_lower": p.get("location", "").lower(),
+            "description": p.get("description", ""),
+            "rating": float(p.get("rating", 5.0)),
+            "is_verified": p.get("is_verified", False),
+            "search_tags": p.get("search_tags") or [],
+            "services": services,
+            "availability": availability,
+            "role": "provider",
+        })
 
-    cursor = (
-        db["service_providers"]
-        .find(query)
-        .sort("rating", -1)  # Best-rated providers first
-        .limit(limit)
-    )
-
-    results = []
-    async for doc in cursor:
-        doc["_id"] = str(doc["_id"])
-        results.append(doc)
-    return results
+    return enriched
 
 
 async def get_provider_by_id(provider_id: str) -> Optional[Dict]:
-    db = await get_db()
-    try:
-        doc = await db["service_providers"].find_one({"_id": ObjectId(provider_id)})
-        if doc:
-            doc["_id"] = str(doc["_id"])
-        return doc
-    except Exception:
+    """Fetch a single provider by their provider_profiles.id UUID."""
+    sb = get_supabase()
+    result = (
+        sb.from_("provider_discovery")
+        .select("*")
+        .eq("provider_id", provider_id)
+        .maybe_single()
+        .execute()
+    )
+    if not result.data:
         return None
+    return _normalize_provider(result.data)
 
 
 async def get_service_by_id(service_id: str) -> Optional[Dict]:
-    db = await get_db()
-    try:
-        doc = await db["services"].find_one({"_id": ObjectId(service_id)})
-        if doc:
-            doc["_id"] = str(doc["_id"])
-            if "provider_id" in doc:
-                doc["provider_id"] = str(doc["provider_id"])
-        return doc
-    except Exception:
+    """Fetch a service by UUID or legacy_id."""
+    sb = get_supabase()
+
+    # Try UUID first
+    result = sb.from_("services").select("*, service_tags(tag)").eq("id", service_id).maybe_single().execute()
+    if not result.data:
+        # Try legacy_id
+        result = sb.from_("services").select("*, service_tags(tag)").eq("legacy_id", service_id).maybe_single().execute()
+    if not result.data:
         return None
+    return _normalize_service(result.data)
 
 
 async def create_booking(booking_data: Dict) -> str:
-    db = await get_db()
-    result = await db["bookings"].insert_one(booking_data)
-    return str(result.inserted_id)
+    """
+    Create a booking directly. Prefer create_booking_safe RPC from the Next.js layer.
+    This function is a fallback for Python-initiated bookings.
+    """
+    sb = get_supabase()
+    result = sb.from_("bookings").insert(booking_data).select("id").single().execute()
+    return result.data["id"]
 
 
 async def update_booking(booking_id: str, update_data: Dict) -> bool:
-    db = await get_db()
-    try:
-        result = await db["bookings"].update_one(
-            {"_id": ObjectId(booking_id)},
-            {"$set": update_data}
-        )
-        return result.modified_count > 0
-    except Exception:
-        return False
+    sb = get_supabase()
+    result = (
+        sb.from_("bookings")
+        .update(update_data)
+        .eq("id", booking_id)
+        .execute()
+    )
+    return len(result.data or []) > 0
 
 
 async def find_bookings(query: Dict, limit: int = 50) -> List[Dict]:
-    db = await get_db()
-    cursor = db["bookings"].find(query).sort("created_at", -1).limit(limit)
-    results = []
-    async for doc in cursor:
-        doc["_id"] = str(doc["_id"])
-        for key in ["user_id", "service_id", "provider_id"]:
-            if key in doc and hasattr(doc[key], "__str__"):
-                doc[key] = str(doc[key])
-        results.append(doc)
-    return results
+    sb = get_supabase()
+    q = sb.from_("bookings").select("*").order("date", desc=True).limit(limit)
+
+    if "user_id" in query:
+        q = q.eq("user_id", query["user_id"])
+    if "provider_id" in query:
+        q = q.eq("provider_id", query["provider_id"])
+    if "status" in query:
+        q = q.eq("status", query["status"])
+
+    result = q.execute()
+    rows = result.data or []
+    return [
+        {**r, "_id": r["id"], "time": (r.get("start_time") or "")[:5]}
+        for r in rows
+    ]
+
+
+# ─── Normalization helpers ────────────────────────────────────────────────────
+
+def _normalize_provider(p: Dict) -> Dict:
+    return {
+        "_id": p.get("provider_id") or p.get("id", ""),
+        "name": p.get("name") or p.get("business_name", ""),
+        "ownerName": p.get("owner_name", ""),
+        "email": p.get("email", ""),
+        "category": p.get("category", ""),
+        "location": p.get("location", ""),
+        "location_lower": p.get("location", "").lower(),
+        "description": p.get("description", ""),
+        "rating": float(p.get("rating", 5.0)),
+        "is_verified": p.get("is_verified", False),
+        "search_tags": p.get("search_tags") or [],
+        "services": [],
+        "availability": {},
+        "role": "provider",
+    }
+
+
+def _normalize_service(s: Dict) -> Dict:
+    tags = [t["tag"] for t in (s.get("service_tags") or [])]
+    return {
+        "_id": s.get("legacy_id") or s.get("id", ""),
+        "provider_id": s.get("provider_id", ""),
+        "name": s.get("name", ""),
+        "category": s.get("category", ""),
+        "description": s.get("description", ""),
+        "price": float(s.get("price", 0)),
+        "duration_minutes": s.get("duration_minutes", 60),
+        "tags": tags,
+    }

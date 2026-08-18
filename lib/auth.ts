@@ -1,20 +1,20 @@
-/**
+﻿/**
  * lib/auth.ts
  * Full auth helpers for Next.js API Routes (Node.js runtime only).
- * Imports mongodb and bcryptjs — do NOT import this in middleware.ts.
+ * Uses Supabase (service role) instead of MongoDB + bcryptjs.
  *
  * For Edge-safe JWT methods (used in middleware), see lib/auth-edge.ts.
  */
 
 import { cookies } from "next/headers";
-import { getDb } from "./mongodb";
+import { supabaseAdmin } from "./supabase";
 import bcrypt from "bcryptjs";
 import { verifyToken, signToken, COOKIE_NAME } from "./auth-edge";
 
 export type { JWTPayload } from "./auth-edge";
 export { signToken, COOKIE_NAME };
 
-// ─── Cookie helpers ───────────────────────────────────────────────────────────
+// ─── Cookie helpers ────────────────────────────────────────────────────────────
 
 export async function getSessionFromCookies() {
   const cookieStore = await cookies();
@@ -33,7 +33,7 @@ export function getTokenCookieOptions() {
   };
 }
 
-// ─── User Registration ────────────────────────────────────────────────────────
+// ─── User Registration ─────────────────────────────────────────────────────────
 
 export async function registerUser(data: {
   name: string;
@@ -44,88 +44,91 @@ export async function registerUser(data: {
   category?: string;
   location?: string;
 }) {
-  const db = await getDb();
-  const collection =
-    data.role === "provider"
-      ? db.collection("service_providers")
-      : db.collection("users");
+  // Check if email is already taken
+  const { data: existing } = await supabaseAdmin
+    .from("users")
+    .select("id")
+    .eq("email", data.email)
+    .maybeSingle();
 
-  const existing = await collection.findOne({ email: data.email });
   if (existing) {
     throw new Error("Email already registered");
   }
 
   const passwordHash = await bcrypt.hash(data.password, 12);
-  const now = new Date();
 
+  // Insert the unified user row
+  const { data: user, error: userError } = await supabaseAdmin
+    .from("users")
+    .insert({
+      name: data.role === "provider" ? (data.businessName || data.name) : data.name,
+      email: data.email,
+      password_hash: passwordHash,
+      role: data.role,
+    })
+    .select("id, email, name, role")
+    .single();
+
+  if (userError || !user) {
+    throw new Error(userError?.message || "Registration failed");
+  }
+
+  // If provider, also create the provider_profile row
   if (data.role === "provider") {
     const location = data.location || "";
-    const category = data.category || "General";
-    const result = await collection.insertOne({
-      name: data.businessName || data.name,
-      ownerName: data.name,
-      email: data.email,
-      passwordHash,
-      category,
-      location,
-      location_lower: location.toLowerCase(),
-      search_tags: [],
-      services: [],
-      availability: {},
-      rating: 5.0,
-      role: "provider",
-      createdAt: now,
-    });
-    return {
-      userId: result.insertedId.toString(),
-      email: data.email,
-      name: data.businessName || data.name,
-      role: "provider" as const,
-    };
-  } else {
-    const result = await collection.insertOne({
-      name: data.name,
-      email: data.email,
-      passwordHash,
-      role: "user",
-      createdAt: now,
-    });
-    return {
-      userId: result.insertedId.toString(),
-      email: data.email,
-      name: data.name,
-      role: "user" as const,
-    };
+    const { error: profileError } = await supabaseAdmin
+      .from("provider_profiles")
+      .insert({
+        user_id: user.id,
+        business_name: data.businessName || data.name,
+        owner_name: data.name,
+        category: data.category || "General",
+        location,
+        rating: 5.0,
+      });
+
+    if (profileError) {
+      // Clean up user row on failure
+      await supabaseAdmin.from("users").delete().eq("id", user.id);
+      throw new Error(profileError.message || "Failed to create provider profile");
+    }
   }
+
+  return {
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role as "user" | "provider",
+  };
 }
 
-// ─── User Login ───────────────────────────────────────────────────────────────
+// ─── User Login ────────────────────────────────────────────────────────────────
 
 export async function loginUser(data: {
   email: string;
   password: string;
   role: "user" | "provider";
 }) {
-  const db = await getDb();
-  const collection =
-    data.role === "provider"
-      ? db.collection("service_providers")
-      : db.collection("users");
+  const { data: user, error } = await supabaseAdmin
+    .from("users")
+    .select("id, email, name, role, password_hash")
+    .eq("email", data.email)
+    .eq("role", data.role)
+    .maybeSingle();
 
-  const user = await collection.findOne({ email: data.email });
-  if (!user) {
+  if (error || !user) {
     throw new Error("Invalid email or password");
   }
 
-  const valid = await bcrypt.compare(data.password, user.passwordHash);
+  const valid = await bcrypt.compare(data.password, user.password_hash);
   if (!valid) {
     throw new Error("Invalid email or password");
   }
 
   return {
-    userId: user._id.toString(),
+    userId: user.id,
     email: user.email,
     name: user.name,
-    role: data.role,
+    role: user.role as "user" | "provider",
   };
 }

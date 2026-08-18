@@ -1,4 +1,4 @@
-# ScheduleAI Backend — Python Dependencies
+﻿# ScheduleAI Backend — Python Dependencies
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 python-dotenv>=1.0.0
@@ -9,12 +9,12 @@ langchain-core>=0.3.0
 langchain-google-genai>=2.0.0
 langgraph>=0.2.0
 
-# MongoDB (async)
-motor>=3.5.0
-pymongo>=4.9.0
-bcrypt>=4.0.0
-
-
+# Supabase (replaces MongoDB motor + pymongo)
+supabase>=2.0.0
+postgrest>=0.17.0
 
 # HTTP
 httpx>=0.27.0
+
+# Password hashing (for seed_db only)
+bcrypt>=4.0.0

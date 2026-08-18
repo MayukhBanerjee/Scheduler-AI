@@ -1,30 +1,30 @@
-# Deploy ScheduleAI (optional stretch)
+# Deploy ScheduleAI (Production)
 
-Complete local acceptance first. Then:
+## 1. Supabase PostgreSQL
+- Create project at https://supabase.com
+- Execute migrations `migrations/001` through `migrations/011` in SQL Editor
+- Copy `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`
 
-## 1. MongoDB Atlas
-- Confirm `MONGODB_URI` points at Atlas
-- After seed (or on first booking API hit), unique index `unique_active_provider_slot` is created
-
-## 2. FastAPI (Render / Railway)
+## 2. FastAPI (Render / Railway / Fly.io)
 - Root: `backend/`
 - Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 - Env:
   - `GEMINI_API_KEY`
-  - `MONGODB_URI`
-  - `MONGODB_DB_NAME=scheduleai`
-  - `BACKEND_API_KEY` (strong random)
+  - `SUPABASE_URL`
+  - `SUPABASE_SERVICE_ROLE_KEY`
+  - `BACKEND_API_KEY` (strong random secret)
   - `CORS_ORIGINS=https://YOUR_VERCEL_DOMAIN`
 
 ## 3. Next.js (Vercel)
 - Root: repo root
 - Env:
-  - `MONGODB_URI`
-  - `MONGODB_DB_NAME`
+  - `NEXT_PUBLIC_SUPABASE_URL`
+  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY`
   - `JWT_SECRET`
   - `BACKEND_URL=https://YOUR_FASTAPI_URL`
   - `BACKEND_API_KEY` (same as backend)
-  - `NEXT_PUBLIC_BACKEND_URL` (optional, same as BACKEND_URL)
+  - `NEXT_PUBLIC_BACKEND_URL`
 
 ## 4. Smoke test
-Run the 8 acceptance flows from README on the public URL.
+Run the acceptance flows on the production URL.

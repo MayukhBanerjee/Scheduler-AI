@@ -1,7 +1,6 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getDb } from "@/lib/mongodb";
-import { ObjectId } from "mongodb";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function GET() {
   try {
@@ -10,34 +9,32 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const db = await getDb();
-    const now = new Date();
-    // Get today's date string YYYY-MM-DD
-    const todayStr = now.toISOString().split("T")[0];
+    const today = new Date().toISOString().split("T")[0];
 
-    const bookings = await db
-      .collection("bookings")
-      .find({
-        user_id: new ObjectId(session.userId),
-        date: { $gte: todayStr },
-        status: { $ne: "cancelled" },
-      })
-      .sort({ date: 1, time: 1 })
-      .limit(20)
-      .toArray();
+    const { data: bookings, error } = await supabaseAdmin
+      .from("bookings")
+      .select("id, service_name, date, start_time, location, provider_name")
+      .eq("user_id", session.userId)
+      .gte("date", today)
+      .neq("status", "cancelled")
+      .order("date", { ascending: true })
+      .order("start_time", { ascending: true })
+      .limit(20);
+
+    if (error) throw error;
 
     return NextResponse.json({
-      events: bookings.map((b) => ({
-        id: b._id.toString(),
+      events: (bookings ?? []).map((b) => ({
+        id: b.id,
         service_name: b.service_name || "Appointment",
         date: b.date,
-        time: b.time,
+        time: b.start_time?.substring(0, 5),
         location: b.location || null,
         provider_name: b.provider_name || null,
       })),
     });
   } catch (error) {
     console.error("[calendar/user] GET error:", error);
-    return NextResponse.json({ error: "Failed to fetch internal calendar data" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch calendar data" }, { status: 500 });
   }
 }

@@ -1,7 +1,6 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getDb } from "@/lib/mongodb";
-import { ObjectId } from "mongodb";
+import { supabaseAdmin } from "@/lib/supabase";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -13,10 +12,6 @@ export async function PATCH(req: Request, context: RouteContext) {
     }
 
     const { id } = await context.params;
-    if (!ObjectId.isValid(id)) {
-      return NextResponse.json({ error: "Invalid booking id" }, { status: 400 });
-    }
-
     const body = await req.json();
     const action = body?.action as string;
 
@@ -27,17 +22,26 @@ export async function PATCH(req: Request, context: RouteContext) {
       );
     }
 
-    const db = await getDb();
-    const booking = await db.collection("bookings").findOne({ _id: new ObjectId(id) });
-    if (!booking) {
+    const { data: booking, error: fetchErr } = await supabaseAdmin
+      .from("bookings")
+      .select("id, user_id, provider_id, status, date, start_time")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr || !booking) {
       return NextResponse.json({ error: "Booking not found" }, { status: 404 });
     }
 
-    const userId = session.userId;
-    const isOwner =
-      session.role === "user" && booking.user_id?.toString() === userId;
+    const { data: providerProfile } = await supabaseAdmin
+      .from("provider_profiles")
+      .select("user_id")
+      .eq("id", booking.provider_id)
+      .maybeSingle();
+
+    const isOwner = session.role === "user" && booking.user_id === session.userId;
     const isProvider =
-      session.role === "provider" && booking.provider_id?.toString() === userId;
+      session.role === "provider" &&
+      providerProfile?.user_id === session.userId;
 
     if (!isOwner && !isProvider) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -57,39 +61,23 @@ export async function PATCH(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "Booking is already completed" }, { status: 400 });
     }
 
-    const newStatus = action === "cancel" ? "cancelled" : "completed";
-
-    await db.collection("bookings").updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { status: newStatus, updated_at: new Date() } }
-    );
-
-    // Restore slot on cancel
-    if (action === "cancel" && booking.provider_id && booking.date && booking.time) {
-      const provider = await db.collection("service_providers").findOne({
-        _id: new ObjectId(booking.provider_id.toString()),
-      });
-      if (provider) {
-        const availability = {
-          ...((provider.availability || {}) as Record<string, string[]>),
-        };
-        const dateKey = String(booking.date);
-        const current = Array.isArray(availability[dateKey])
-          ? [...availability[dateKey]]
-          : [];
-        if (!current.includes(booking.time)) {
-          current.push(booking.time);
-          current.sort();
-        }
-        availability[dateKey] = current;
-        await db.collection("service_providers").updateOne(
-          { _id: provider._id },
-          { $set: { availability } }
-        );
-      }
+    if (action === "cancel") {
+      const { data: newStatus, error: rpcError } = await supabaseAdmin
+        .rpc("cancel_booking_safe", {
+          p_booking_id: id,
+          p_actor_id: session.userId,
+        });
+      if (rpcError) throw new Error(rpcError.message);
+      return NextResponse.json({ success: true, status: newStatus });
     }
 
-    return NextResponse.json({ success: true, status: newStatus });
+    const { error: updateErr } = await supabaseAdmin
+      .from("bookings")
+      .update({ status: "completed", updated_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if (updateErr) throw updateErr;
+    return NextResponse.json({ success: true, status: "completed" });
   } catch (error) {
     console.error("[bookings PATCH] error:", error);
     return NextResponse.json({ error: "Failed to update booking" }, { status: 500 });
