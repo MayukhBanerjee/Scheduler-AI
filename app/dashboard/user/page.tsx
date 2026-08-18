@@ -144,19 +144,6 @@ export default function AISchedulePage() {
     fetchMyBookings()
   }, [fetchMyBookings])
 
-  // Process any quick prompt passed from Discover or Calendar
-  useEffect(() => {
-    try {
-      const quickPrompt = sessionStorage.getItem("scheduleai_quick_prompt")
-      if (quickPrompt) {
-        sessionStorage.removeItem("scheduleai_quick_prompt")
-        setTimeout(() => {
-          handleSendMessage(quickPrompt)
-        }, 300)
-      }
-    } catch {}
-  }, [handleSendMessage])
-
   // 5. Web Speech API Setup
   useEffect(() => {
     const SR =
@@ -296,6 +283,19 @@ export default function AISchedulePage() {
     },
     [inputMessage, conversationId, messages]
   )
+
+  // Process any quick prompt passed from Discover or Calendar
+  useEffect(() => {
+    try {
+      const quickPrompt = sessionStorage.getItem("scheduleai_quick_prompt")
+      if (quickPrompt) {
+        sessionStorage.removeItem("scheduleai_quick_prompt")
+        setTimeout(() => {
+          handleSendMessage(quickPrompt)
+        }, 300)
+      }
+    } catch {}
+  }, [handleSendMessage])
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
