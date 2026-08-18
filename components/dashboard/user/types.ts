@@ -46,6 +46,7 @@ export interface BookingRow {
 
 export interface NavItem {
   id: NavTab
+  href: string
   label: string
   icon: LucideIcon
   badge?: string

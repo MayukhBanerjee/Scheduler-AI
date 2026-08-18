@@ -1,26 +1,16 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef, useEffect, useCallback, useMemo } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-
 import {
-  NavTab,
   Message,
   ServiceResult,
-  UserProfile,
   BookingRow,
   CHAT_STORAGE_KEY,
-  FEATURED_PROVIDERS,
 } from "@/components/dashboard/user/types"
-import { CustomerSidebar } from "@/components/dashboard/user/sidebar"
-import { CustomerHeader } from "@/components/dashboard/user/header"
 import { AISchedulerView } from "@/components/dashboard/user/views/ai-scheduler-view"
-import { DiscoverView } from "@/components/dashboard/user/views/discover-view"
-import { BookingsView } from "@/components/dashboard/user/views/bookings-view"
-import { CalendarView } from "@/components/dashboard/user/views/calendar-view"
-import { AnalyticsView } from "@/components/dashboard/user/views/analytics-view"
 
 function renderRichText(content: string) {
   const parts: React.ReactNode[] = []
@@ -57,16 +47,10 @@ function renderRichText(content: string) {
   return parts.length ? parts : content
 }
 
-export default function UserDashboard() {
+export default function AISchedulePage() {
   const router = useRouter()
   const { toast } = useToast()
 
-  // Navigation & Layout State
-  const [activeTab, setActiveTab] = useState<NavTab>("ai-schedule")
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-
-  // Auth & Chat State
-  const [user, setUser] = useState<UserProfile | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState("")
   const [isTyping, setIsTyping] = useState(false)
@@ -77,10 +61,6 @@ export default function UserDashboard() {
   const [myBookings, setMyBookings] = useState<BookingRow[]>([])
   const [calendarKey, setCalendarKey] = useState(0)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
-
-  // Discover Filters
-  const [discoveryCategory, setDiscoveryCategory] = useState("All")
-  const [discoverySearch, setDiscoverySearch] = useState("")
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -96,18 +76,7 @@ export default function UserDashboard() {
     type: "general",
   }
 
-  // 1. Session Fetch
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.user) setUser(data.user)
-        else router.push("/login?type=user")
-      })
-      .catch(() => router.push("/login?type=user"))
-  }, [router])
-
-  // 2. Chat Hydration from LocalStorage
+  // 1. Hydrate chat from LocalStorage
   useEffect(() => {
     try {
       const raw = localStorage.getItem(CHAT_STORAGE_KEY)
@@ -137,7 +106,7 @@ export default function UserDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 3. Persist Chat to LocalStorage
+  // 2. Persist chat to LocalStorage
   useEffect(() => {
     if (!hydratedRef.current || messages.length === 0) return
     localStorage.setItem(
@@ -152,14 +121,12 @@ export default function UserDashboard() {
     )
   }, [messages, conversationId])
 
-  // 4. Auto Scroll
+  // 3. Auto Scroll
   useEffect(() => {
-    if (activeTab === "ai-schedule") {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-    }
-  }, [messages, activeTab])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages])
 
-  // 5. Fetch Bookings
+  // 4. Fetch Bookings
   const fetchMyBookings = useCallback(async () => {
     try {
       const res = await fetch("/api/bookings")
@@ -177,7 +144,20 @@ export default function UserDashboard() {
     fetchMyBookings()
   }, [fetchMyBookings])
 
-  // 6. Web Speech Recognition API
+  // Process any quick prompt passed from Discover or Calendar
+  useEffect(() => {
+    try {
+      const quickPrompt = sessionStorage.getItem("scheduleai_quick_prompt")
+      if (quickPrompt) {
+        sessionStorage.removeItem("scheduleai_quick_prompt")
+        setTimeout(() => {
+          handleSendMessage(quickPrompt)
+        }, 300)
+      }
+    } catch {}
+  }, [handleSendMessage])
+
+  // 5. Web Speech API Setup
   useEffect(() => {
     const SR =
       typeof window !== "undefined"
@@ -238,7 +218,7 @@ export default function UserDashboard() {
     }
   }
 
-  // 7. Dispatch AI Message
+  // 6. Handle AI Message
   const handleSendMessage = useCallback(
     async (customText?: string) => {
       const textToSend = customText || inputMessage
@@ -263,7 +243,6 @@ export default function UserDashboard() {
       setMessages((prev) => [...prev, userMessage])
       if (!customText) setInputMessage("")
       setIsTyping(true)
-      setActiveTab("ai-schedule")
 
       try {
         const res = await fetch("/api/chat", {
@@ -325,7 +304,7 @@ export default function UserDashboard() {
     }
   }
 
-  // 8. Atomic Booking Execution
+  // 7. Handle Slot Booking
   const handleBookService = async (service: ServiceResult, slot: string) => {
     setBookingInProgress(service.service_id)
 
@@ -390,7 +369,7 @@ export default function UserDashboard() {
     }
   }
 
-  // 9. Booking Cancellation
+  // 8. Handle Booking Cancellation
   const handleCancelBooking = async (id: string) => {
     setCancellingId(id)
     try {
@@ -412,130 +391,27 @@ export default function UserDashboard() {
     }
   }
 
-  const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" })
-    router.push("/")
-    router.refresh()
-  }
-
-  // 10. Filtered Providers for Discover Tab
-  const filteredProviders = useMemo(() => {
-    return FEATURED_PROVIDERS.filter((p) => {
-      const matchesCategory =
-        discoveryCategory === "All" || p.category === discoveryCategory
-      const matchesSearch =
-        !discoverySearch.trim() ||
-        p.name.toLowerCase().includes(discoverySearch.toLowerCase()) ||
-        p.services.some((s) => s.name.toLowerCase().includes(discoverySearch.toLowerCase()))
-      return matchesCategory && matchesSearch
-    })
-  }, [discoveryCategory, discoverySearch])
-
-  const tabLabels: Record<NavTab, string> = {
-    "ai-schedule": "AI Scheduler",
-    discover: "Discover Services",
-    bookings: "My Bookings",
-    calendar: "Schedule Calendar",
-    analytics: "Booking Analytics",
-  }
-
   return (
-    <div className="h-screen max-h-screen w-screen overflow-hidden flex bg-[#fff8f4] dark:bg-stone-950 text-stone-900 dark:text-stone-100 relative selection:bg-orange-500/20 selection:text-[#b02f00] font-sans antialiased">
-      {/* Background Ambient Wave */}
-      <div className="wavy-bg fixed inset-0 pointer-events-none -z-10 opacity-70" />
-
-      {/* ─── 1. Modular Collapsible Sidebar ─────────────────────────────── */}
-      <CustomerSidebar
-        activeTab={activeTab}
-        onTabChange={setActiveTab}
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-        user={user}
-        bookingsCount={myBookings.length}
-      />
-
-      {/* ─── 2. Main Workspace Layout ──────────────────────────────────── */}
-      <div
-        className="flex-1 h-screen max-h-screen flex flex-col min-w-0 overflow-hidden transition-all duration-300"
-        style={{ marginLeft: sidebarCollapsed ? 80 : 256 }}
-      >
-        {/* Modular Top Header */}
-        <CustomerHeader
-          activeTabLabel={tabLabels[activeTab]}
-          user={user}
-          onLogout={handleLogout}
-        />
-
-        {/* Dynamic Views */}
-        <main className="flex-1 min-h-0 overflow-hidden p-3.5 sm:p-4 w-full flex flex-col">
-          {activeTab === "ai-schedule" && (
-            <AISchedulerView
-              messages={messages}
-              inputMessage={inputMessage}
-              setInputMessage={setInputMessage}
-              isTyping={isTyping}
-              isListening={isListening}
-              speechSupported={speechSupported}
-              toggleVoice={toggleVoice}
-              handleSendMessage={handleSendMessage}
-              handleKeyPress={handleKeyPress}
-              bookingInProgress={bookingInProgress}
-              handleBookService={handleBookService}
-              messagesEndRef={messagesEndRef}
-              inputRef={inputRef}
-              renderRichText={renderRichText}
-              bookings={myBookings}
-              onViewAllBookings={() => setActiveTab("bookings")}
-              onCancelBooking={handleCancelBooking}
-              cancellingId={cancellingId}
-              calendarKey={calendarKey}
-            />
-          )}
-
-          {activeTab === "discover" && (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-              <DiscoverView
-                category={discoveryCategory}
-                onCategoryChange={setDiscoveryCategory}
-                search={discoverySearch}
-                onSearchChange={setDiscoverySearch}
-                providers={filteredProviders}
-                onBookWithAI={handleSendMessage}
-              />
-            </div>
-          )}
-
-          {activeTab === "bookings" && (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-              <BookingsView
-                bookings={myBookings}
-                onNewBooking={() => setActiveTab("ai-schedule")}
-                onCancelBooking={handleCancelBooking}
-                cancellingId={cancellingId}
-              />
-            </div>
-          )}
-
-          {activeTab === "calendar" && (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-              <CalendarView
-                calendarKey={calendarKey}
-                onNewEvent={() => setActiveTab("ai-schedule")}
-                onResolveConflict={(prompt) => {
-                  setActiveTab("ai-schedule")
-                  handleSendMessage(prompt)
-                }}
-              />
-            </div>
-          )}
-
-          {activeTab === "analytics" && (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-              <AnalyticsView bookings={myBookings} />
-            </div>
-          )}
-        </main>
-      </div>
-    </div>
+    <AISchedulerView
+      messages={messages}
+      inputMessage={inputMessage}
+      setInputMessage={setInputMessage}
+      isTyping={isTyping}
+      isListening={isListening}
+      speechSupported={speechSupported}
+      toggleVoice={toggleVoice}
+      handleSendMessage={handleSendMessage}
+      handleKeyPress={handleKeyPress}
+      bookingInProgress={bookingInProgress}
+      handleBookService={handleBookService}
+      messagesEndRef={messagesEndRef}
+      inputRef={inputRef}
+      renderRichText={renderRichText}
+      bookings={myBookings}
+      onViewAllBookings={() => router.push("/dashboard/user/bookings")}
+      onCancelBooking={handleCancelBooking}
+      cancellingId={cancellingId}
+      calendarKey={calendarKey}
+    />
   )
 }

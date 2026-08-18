@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { motion } from "framer-motion"
 import {
   Calendar as CalendarIcon,
@@ -11,11 +12,9 @@ import {
   PanelLeftClose,
   PanelLeft,
 } from "lucide-react"
-import { NavTab, UserProfile, NavItem } from "./types"
+import { UserProfile, NavItem } from "./types"
 
 interface CustomerSidebarProps {
-  activeTab: NavTab
-  onTabChange: (tab: NavTab) => void
   collapsed: boolean
   onToggleCollapse: () => void
   user: UserProfile | null
@@ -23,13 +22,13 @@ interface CustomerSidebarProps {
 }
 
 export function CustomerSidebar({
-  activeTab,
-  onTabChange,
   collapsed,
   onToggleCollapse,
   user,
   bookingsCount,
 }: CustomerSidebarProps) {
+  const pathname = usePathname()
+
   const getInitials = (name?: string) => {
     if (!name) return "U"
     const parts = name.trim().split(" ")
@@ -40,28 +39,33 @@ export function CustomerSidebar({
   const navItems: NavItem[] = [
     {
       id: "ai-schedule",
+      href: "/dashboard/user",
       label: "AI Scheduler",
       icon: Sparkles,
       badge: "Live",
     },
     {
       id: "discover",
+      href: "/dashboard/user/discover",
       label: "Discover",
       icon: Compass,
     },
     {
       id: "bookings",
+      href: "/dashboard/user/bookings",
       label: "Bookings",
       icon: ListChecks,
       count: bookingsCount > 0 ? bookingsCount : undefined,
     },
     {
       id: "calendar",
+      href: "/dashboard/user/calendar",
       label: "Calendar",
       icon: CalendarIcon,
     },
     {
       id: "analytics",
+      href: "/dashboard/user/analytics",
       label: "Analytics",
       icon: BarChart3,
     },
@@ -93,25 +97,28 @@ export function CustomerSidebar({
 
           <button
             onClick={onToggleCollapse}
-            className="p-1.5 rounded-lg text-stone-500 hover:text-[#b02f00] hover:bg-orange-100/50 dark:hover:bg-stone-800 transition-colors"
+            className="p-1.5 rounded-lg text-stone-500 hover:text-[#b02f00] hover:bg-orange-100/50 dark:hover:bg-stone-800 transition-colors cursor-pointer"
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
         </div>
 
-        {/* Nav Items List */}
+        {/* Nav Items List with direct Next.js Route Links */}
         <nav className="p-3 space-y-1.5 mt-2">
           {navItems.map((item) => {
             const Icon = item.icon
-            const isActive = activeTab === item.id
+            const isActive =
+              item.href === "/dashboard/user"
+                ? pathname === "/dashboard/user"
+                : pathname.startsWith(item.href)
 
             return (
-              <button
+              <Link
                 key={item.id}
-                onClick={() => onTabChange(item.id)}
+                href={item.href}
                 title={collapsed ? item.label : undefined}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-bold transition-all ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-bold transition-all cursor-pointer ${
                   isActive
                     ? "bg-gradient-to-r from-[#b02f00] to-[#ff5722] text-white shadow-md shadow-orange-500/20 scale-[1.02]"
                     : "text-stone-600 dark:text-stone-300 hover:bg-orange-100/60 dark:hover:bg-stone-800/60 hover:text-[#b02f00]"
@@ -150,7 +157,7 @@ export function CustomerSidebar({
                     )}
                   </motion.div>
                 )}
-              </button>
+              </Link>
             )
           })}
         </nav>
