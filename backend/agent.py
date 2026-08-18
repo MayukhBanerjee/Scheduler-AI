@@ -35,14 +35,6 @@ from models import ExtractedIntent
 
 load_dotenv()
 
-api_key = os.getenv("GEMINI_API_KEY")
-if not api_key:
-    raise ValueError("GEMINI_API_KEY not found in .env file.")
-
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-llm = ChatGoogleGenerativeAI(model=GEMINI_MODEL, google_api_key=api_key, temperature=0.3)
-
-
 def _extract_text(content: Any) -> str:
     """Extract plain text from string or structured content list."""
     if isinstance(content, str):
@@ -58,6 +50,32 @@ def _extract_text(content: Any) -> str:
                 parts.append(item.text)
         return "".join(parts)
     return str(content)
+
+
+def invoke_llm(messages: list) -> str:
+    """Invoke Gemini model with automated fallback across available model versions."""
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY not found in .env file.")
+
+    models_to_try = []
+    preferred = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
+    for m in [preferred, "gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-pro"]:
+        if m and m not in models_to_try:
+            models_to_try.append(m)
+
+    last_err = None
+    for model_name in models_to_try:
+        try:
+            client = ChatGoogleGenerativeAI(model=model_name, google_api_key=api_key, temperature=0.3)
+            resp = client.invoke(messages)
+            return _extract_text(resp.content).strip()
+        except Exception as e:
+            last_err = e
+            print(f"[LLM] Model '{model_name}' unavailable ({e}). Trying fallback...")
+            continue
+
+    raise last_err or RuntimeError("Failed to invoke any Gemini model.")
 
 
 class AgentState(TypedDict):
@@ -160,8 +178,7 @@ def node_intent_extractor(state: AgentState) -> AgentState:
     ]
 
     try:
-        response = llm.invoke(messages)
-        content = _extract_text(response.content).strip()
+        content = invoke_llm(messages)
         content = re.sub(r"^```json\s*|\s*```$", "", content, flags=re.MULTILINE).strip()
         intent_raw = json.loads(content)
         if not isinstance(intent_raw, dict):
@@ -382,8 +399,7 @@ def node_response_generator(state: AgentState) -> AgentState:
     ]
 
     try:
-        resp = llm.invoke(messages)
-        response_text = _extract_text(resp.content).strip()
+        response_text = invoke_llm(messages)
     except Exception as e:
         print(f"[Response Generator] LLM error: {e}")
         if ranked:
