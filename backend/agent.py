@@ -59,8 +59,8 @@ def invoke_llm(messages: list) -> str:
         raise ValueError("GEMINI_API_KEY not found in .env file.")
 
     models_to_try = []
-    preferred = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
-    for m in [preferred, "gemini-2.0-flash", "gemini-2.5-flash", "gemini-1.5-flash-latest", "gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-pro"]:
+    preferred = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
+    for m in [preferred, "gemini-3.6-flash"]:
         if m and m not in models_to_try:
             models_to_try.append(m)
 
@@ -72,10 +72,10 @@ def invoke_llm(messages: list) -> str:
             return _extract_text(resp.content).strip()
         except Exception as e:
             last_err = e
-            print(f"[LLM] Model '{model_name}' unavailable ({e}). Trying fallback...")
+            print(f"[LLM] Model '{model_name}' error: {e}")
             continue
 
-    raise last_err or RuntimeError("Failed to invoke any Gemini model.")
+    raise last_err or RuntimeError("Failed to invoke Gemini model.")
 
 
 class AgentState(TypedDict):
