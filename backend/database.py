@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/database.py
 Async Supabase query helpers — replaces MongoDB motor client.
 Author: Mayukh Banerjee
@@ -14,22 +14,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-
-# Lazy-initialized Supabase async client
+# Lazy-initialized Supabase client
 _supabase = None
 
 
 def get_supabase():
     global _supabase
     if _supabase is None:
-        from supabase import create_client, Client
-        if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        from supabase import create_client
+        url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
+        key = (
+            os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            or os.getenv("SUPABASE_KEY")
+            or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
+        )
+        if not url or not key:
             raise RuntimeError(
-                "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in backend/.env"
+                "SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) and SUPABASE_SERVICE_ROLE_KEY must be set in backend/.env"
             )
-        _supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+        _supabase = create_client(url, key)
     return _supabase
 
 
