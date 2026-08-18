@@ -53,10 +53,10 @@ def _extract_text(content: Any) -> str:
 
 
 def invoke_llm(messages: list) -> str:
-    """Invoke Gemini model with automated fallback across available model versions."""
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    """Invoke Gemini model using GEMINI_API_KEY (strictly 1 LLM call per request)."""
+    api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY not found in .env file.")
+        raise ValueError("GEMINI_API_KEY not found in .env file.")
 
     models_to_try = []
     preferred = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip()
@@ -378,57 +378,36 @@ Ask a single, clear follow-up question to get what you need. Be warm and brief.
 
 
 def node_response_generator(state: AgentState) -> AgentState:
-    """Node 6: Generate final user-friendly response."""
+    """Node 6: Generate final response deterministically (0 additional LLM calls)."""
     if state.get("needs_clarification"):
         cq = state.get(
             "clarification_question",
             "Could you tell me more about what service you're looking for?",
         )
-        messages = [
-            SystemMessage(content=CLARIFICATION_RESPONSE.format(
-                user_message=state["user_message"],
-                missing=state.get("intent", {}).get("missing_fields", ["service type"]),
-            )),
-            HumanMessage(content=state["user_message"]),
-        ]
-        try:
-            resp = llm.invoke(messages)
-            return {**state, "response": _extract_text(resp.content).strip()}
-        except Exception:
-            return {**state, "response": cq}
+        return {**state, "response": cq}
 
     ranked = state.get("ranked_results") or []
     intent = state.get("intent") or {}
+    service_type = intent.get("specific_service") or intent.get("service_type") or "services"
+    loc = intent.get("location") or ""
+    loc_str = f" in {loc}" if loc else ""
 
-    messages = [
-        SystemMessage(content=RESPONSE_SYSTEM_PROMPT.format(
-            user_message=state["user_message"],
-            intent=json.dumps(intent, indent=2),
-            results=json.dumps(ranked, indent=2) if ranked else "No results found",
-        )),
-        HumanMessage(content="Generate the response now."),
-    ]
+    if ranked:
+        top_provider = ranked[0]
+        p_name = top_provider.get("provider_name", "verified provider")
+        date_val = top_provider.get("date", "")
+        date_str = f" for {date_val}" if date_val else ""
 
-    try:
-        response_text = invoke_llm(messages)
-    except Exception as e:
-        print(f"[Response Generator] LLM error: {e}")
-        if ranked:
-            lines = [f"I found {len(ranked)} option(s) for you:\n"]
-            for i, r in enumerate(ranked[:3], 1):
-                slots = ", ".join(r.get("available_slots", [])[:3]) or "Flexible"
-                lines.append(
-                    f"{i}. **{r['provider_name']}** — {r['service_name']} "
-                    f"(₹{r['price']}, {r['duration_minutes']} min)\n"
-                    f"   {r['location']} | {r['rating']}★ | {slots}"
-                )
-            lines.append("\nWhich would you like to book?")
-            response_text = "\n".join(lines)
-        else:
-            response_text = (
-                "I couldn't find any services matching your request. "
-                "Could you try rephrasing, or let me know a different service or day?"
-            )
+        response_text = (
+            f"I found top-rated {service_type}{loc_str}{date_str}! "
+            f"Here are the available booking slots with {p_name} and other matching providers below. "
+            f"Tap any slot to confirm your booking instantly:"
+        )
+    else:
+        response_text = (
+            f"I couldn't find any available {service_type}{loc_str} matching your request right now. "
+            "Could you try a different time, date, or location?"
+        )
 
     return {**state, "response": response_text}
 
