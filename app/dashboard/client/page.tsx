@@ -956,7 +956,7 @@ export default function ClientDashboard() {
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
                       <p className="text-muted-foreground text-xs">Date</p>
-                      <p className="font-medium">{new Date(selectedBooking.date).toLocaleDateString()}</p>
+                      <p className="font-medium">{new Date(selectedBooking.date).toLocaleDateString("en-US")}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground text-xs">Time</p>

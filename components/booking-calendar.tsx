@@ -35,32 +35,32 @@ interface BookingCalendarProps {
 
 type SyncStatus = "idle" | "syncing" | "success" | "error" | "unconfigured"
 
-// Formats date/time natively
+// Formats date/time — always en-US to prevent SSR/client hydration mismatch
 function formatEventTime(dateStr: string, timeStr: string) {
   try {
     const [year, month, day] = dateStr.split("-").map(Number)
     const [hours, minutes] = timeStr.split(":").map(Number)
-    
+
     const eventDate = new Date(year, month - 1, day)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    
+
     const isToday = eventDate.getTime() === today.getTime()
-    
+
     const timeDate = new Date(year, month - 1, day, hours, minutes)
-    const formattedTime = timeDate.toLocaleTimeString([], { 
-        hour: 'numeric', 
-        minute: '2-digit', 
-        hour12: true 
+    const formattedTime = timeDate.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
     })
-    
+
     if (isToday) {
       return `Today, ${formattedTime}`
     }
-    
-    const formattedDate = timeDate.toLocaleDateString([], { 
-        day: 'numeric', 
-        month: 'short' 
+
+    const formattedDate = timeDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
     })
     return `${formattedDate}, ${formattedTime}`
   } catch {
@@ -81,7 +81,9 @@ export function BookingCalendar({
   const [lastSync, setLastSync] = useState<Date | null>(null)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
+  // Initialize as undefined to avoid SSR/client hydration mismatch — set to today in useEffect
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
+  const [mounted, setMounted] = useState(false)
 
   // ─── Fetch real events from internal API ──────────────────────────────────────
 
@@ -125,6 +127,12 @@ export function BookingCalendar({
     },
     [onEventSync, userType]
   )
+
+  // Mark mounted and set today as default selected date (client-only to avoid hydration mismatch)
+  useEffect(() => {
+    setMounted(true)
+    setSelectedDate(new Date())
+  }, [])
 
   // Initial load
   useEffect(() => {
@@ -254,14 +262,14 @@ export function BookingCalendar({
           </div>
         </div>
 
-        {lastSync && (
+        {mounted && lastSync && (
           <motion.p
             className="text-xs text-muted-foreground"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
             Last synced:{" "}
-            {lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {lastSync.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
           </motion.p>
         )}
       </CardHeader>
@@ -287,9 +295,9 @@ export function BookingCalendar({
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
               <span className="text-sm font-medium">
-                {selectedDate 
-                    ? `Events on ${selectedDate.toLocaleDateString([], { month: 'short', day: 'numeric'})}` 
-                    : "Upcoming Schedule"}
+                {mounted && selectedDate
+                  ? `Events on ${selectedDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                  : "Upcoming Schedule"}
               </span>
             </div>
           </div>

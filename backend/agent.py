@@ -11,10 +11,14 @@ Node 6: Response Generator
 """
 
 import os
+import sys
 import json
 import re
 from typing import TypedDict, Optional, List, Dict, Any
 from dotenv import load_dotenv
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -35,7 +39,25 @@ api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     raise ValueError("GEMINI_API_KEY not found in .env file.")
 
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=api_key, temperature=0.3)
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+llm = ChatGoogleGenerativeAI(model=GEMINI_MODEL, google_api_key=api_key, temperature=0.3)
+
+
+def _extract_text(content: Any) -> str:
+    """Extract plain text from string or structured content list."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and "text" in item:
+                parts.append(item["text"])
+            elif hasattr(item, "text"):
+                parts.append(item.text)
+        return "".join(parts)
+    return str(content)
 
 
 class AgentState(TypedDict):
@@ -139,7 +161,7 @@ def node_intent_extractor(state: AgentState) -> AgentState:
 
     try:
         response = llm.invoke(messages)
-        content = response.content.strip()
+        content = _extract_text(response.content).strip()
         content = re.sub(r"^```json\s*|\s*```$", "", content, flags=re.MULTILINE).strip()
         intent_raw = json.loads(content)
         if not isinstance(intent_raw, dict):
@@ -343,7 +365,7 @@ def node_response_generator(state: AgentState) -> AgentState:
         ]
         try:
             resp = llm.invoke(messages)
-            return {**state, "response": resp.content.strip()}
+            return {**state, "response": _extract_text(resp.content).strip()}
         except Exception:
             return {**state, "response": cq}
 
@@ -361,7 +383,7 @@ def node_response_generator(state: AgentState) -> AgentState:
 
     try:
         resp = llm.invoke(messages)
-        response_text = resp.content.strip()
+        response_text = _extract_text(resp.content).strip()
     except Exception as e:
         print(f"[Response Generator] LLM error: {e}")
         if ranked:
