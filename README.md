@@ -126,4 +126,3 @@ See also [DEPLOY.md](DEPLOY.md) for optional hosting.
 
 
 - **Mayukh Banerjee** — [GitHub](https://github.com/MayukhBanerjee) | [LinkedIn](https://www.linkedin.com/in/mayukh-banerjee)
-- **Naif Naqeeb** — [GitHub](https://github.com/naifnaqeeb) | [LinkedIn](https://www.linkedin.com/in/naifnaqeeb/)

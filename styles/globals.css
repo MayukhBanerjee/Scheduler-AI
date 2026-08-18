@@ -123,3 +123,35 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ── Landing Page Glassmorphism & Custom Accents ── */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.dark .glass-panel {
+  background: rgba(30, 25, 22, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.wavy-bg {
+  background: linear-gradient(135deg, #fff1e7 0%, #fdebdc 50%, #fff8f4 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.dark .wavy-bg {
+  background: linear-gradient(135deg, #1c1511 0%, #291d17 50%, #15110e 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-glow {
+  box-shadow: 0 0 25px rgba(255, 87, 34, 0.25);
+}
+
