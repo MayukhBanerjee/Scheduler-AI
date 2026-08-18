@@ -36,44 +36,9 @@ interface DiscoverViewProps {
   search: string
   onSearchChange: (val: string) => void
   providers?: ProviderItem[]
+  isLoading?: boolean
   onBookWithAI: (prompt: string) => void
 }
-
-const DISCOVERY_PROVIDERS: ProviderItem[] = [
-  {
-    id: "p-dentist",
-    name: "Dr. Sarah Jenkins",
-    category: "Healthcare",
-    rating: 4.9,
-    location: "Koramangala",
-    subtitle: "Advanced Dentistry & Aesthetics • Koramangala",
-    image: "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=600&h=400&fit=crop",
-    badgeText: "Verified Slots",
-    badgeType: "verified",
-  },
-  {
-    id: "p-wellness",
-    name: "Zenith Wellness Center",
-    category: "Wellness",
-    rating: 4.8,
-    location: "Indiranagar",
-    subtitle: "Holistic Therapy & Yoga • Indiranagar",
-    image: "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=600&h=400&fit=crop",
-    badgeText: "Instant Book",
-    badgeType: "instant",
-  },
-  {
-    id: "p-fitness",
-    name: "Core Fitness Studio",
-    category: "Fitness",
-    rating: 4.9,
-    location: "HSR Layout",
-    subtitle: "Personal Training & HIIT • HSR Layout",
-    image: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600&h=400&fit=crop",
-    badgeText: "Verified Slots",
-    badgeType: "verified",
-  },
-]
 
 const CATEGORY_ITEMS = [
   { label: "Healthcare", icon: Activity },
@@ -87,6 +52,8 @@ export function DiscoverView({
   onCategoryChange,
   search,
   onSearchChange,
+  providers = [],
+  isLoading = false,
   onBookWithAI,
 }: DiscoverViewProps) {
   const [favorites, setFavorites] = useState<Record<string, boolean>>({})
@@ -105,15 +72,7 @@ export function DiscoverView({
     }
   }
 
-  const filteredProviders = DISCOVERY_PROVIDERS.filter((p) => {
-    const matchesCat =
-      !category || category === "All" || p.category.toLowerCase() === category.toLowerCase()
-    const matchesSearch =
-      !search.trim() ||
-      p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.subtitle.toLowerCase().includes(search.toLowerCase())
-    return matchesCat && matchesSearch
-  })
+  const filteredProviders = providers
 
   return (
     <div className="flex-1 flex flex-col h-full min-h-0 relative space-y-10 pb-24">
@@ -188,80 +147,113 @@ export function DiscoverView({
         </div>
 
         {/* 3-Column Provider Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProviders.map((provider) => {
-            const isFav = Boolean(favorites[provider.id])
-
-            return (
-              <motion.article
-                key={provider.id}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                whileHover={{ y: -4 }}
-                transition={{ duration: 0.25 }}
-                className="glass-card rounded-2xl overflow-hidden flex flex-col bg-white/80 dark:bg-stone-900/80 border border-white/60 dark:border-stone-800 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-[0_15px_40px_rgba(176,47,0,0.1)] transition-all"
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="glass-card rounded-2xl overflow-hidden bg-white/50 dark:bg-stone-900/50 border border-stone-200/50 dark:border-stone-800 p-5 space-y-4 animate-pulse"
               >
-                {/* Card Image Banner */}
-                <div className="relative h-48 w-full bg-orange-100/50 dark:bg-stone-800 overflow-hidden">
-                  <img
-                    src={provider.image}
-                    alt={provider.name}
-                    className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
-                  />
-                  {/* Top-Right Verified / Instant Badge */}
-                  <div className="absolute top-3 right-3 bg-white/85 dark:bg-stone-900/85 backdrop-blur-md border border-orange-200/50 dark:border-stone-700 text-[#b02f00] dark:text-orange-400 font-bold text-[11px] px-3 py-1 rounded-full flex items-center gap-1 shadow-sm">
-                    {provider.badgeType === "verified" ? (
-                      <ShieldCheck className="h-3.5 w-3.5 text-[#ff5722]" />
-                    ) : (
-                      <Zap className="h-3.5 w-3.5 text-[#ff5722]" />
-                    )}
-                    <span>{provider.badgeText}</span>
-                  </div>
-                </div>
+                <div className="h-44 bg-stone-200 dark:bg-stone-800 rounded-xl" />
+                <div className="h-5 bg-stone-200 dark:bg-stone-800 rounded w-3/4" />
+                <div className="h-4 bg-stone-200 dark:bg-stone-800 rounded w-1/2" />
+                <div className="h-10 bg-stone-200 dark:bg-stone-800 rounded-xl mt-4" />
+              </div>
+            ))}
+          </div>
+        ) : filteredProviders.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredProviders.map((provider) => {
+              const isFav = Boolean(favorites[provider.id])
 
-                {/* Card Content Area */}
-                <div className="p-5 flex flex-col flex-1">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-base sm:text-lg font-bold text-stone-900 dark:text-stone-100 truncate">
-                      {provider.name}
-                    </h3>
-                    <div className="flex items-center gap-1 text-stone-700 dark:text-stone-300 font-bold text-xs bg-orange-50 dark:bg-stone-800 border border-orange-100 dark:border-stone-700 px-2 py-0.5 rounded-md shrink-0">
-                      <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
-                      <span>{provider.rating.toFixed(1)}</span>
+              return (
+                <motion.article
+                  key={provider.id}
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  whileHover={{ y: -4 }}
+                  transition={{ duration: 0.25 }}
+                  className="glass-card rounded-2xl overflow-hidden flex flex-col bg-white/80 dark:bg-stone-900/80 border border-white/60 dark:border-stone-800 shadow-[0_8px_30px_rgba(0,0,0,0.04)] hover:shadow-[0_15px_40px_rgba(176,47,0,0.1)] transition-all"
+                >
+                  {/* Card Image Banner */}
+                  <div className="relative h-48 w-full bg-orange-100/50 dark:bg-stone-800 overflow-hidden">
+                    <img
+                      src={provider.image}
+                      alt={provider.name}
+                      className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                    />
+                    {/* Top-Right Verified / Instant Badge */}
+                    <div className="absolute top-3 right-3 bg-white/85 dark:bg-stone-900/85 backdrop-blur-md border border-orange-200/50 dark:border-stone-700 text-[#b02f00] dark:text-orange-400 font-bold text-[11px] px-3 py-1 rounded-full flex items-center gap-1 shadow-sm">
+                      {provider.badgeType === "verified" ? (
+                        <ShieldCheck className="h-3.5 w-3.5 text-[#ff5722]" />
+                      ) : (
+                        <Zap className="h-3.5 w-3.5 text-[#ff5722]" />
+                      )}
+                      <span>{provider.badgeText}</span>
                     </div>
                   </div>
 
-                  <p className="text-stone-500 dark:text-stone-400 text-xs sm:text-sm font-medium mb-5">
-                    {provider.subtitle}
-                  </p>
+                  {/* Card Content Area */}
+                  <div className="p-5 flex flex-col flex-1">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="text-base sm:text-lg font-bold text-stone-900 dark:text-stone-100 truncate">
+                        {provider.name}
+                      </h3>
+                      <div className="flex items-center gap-1 text-stone-700 dark:text-stone-300 font-bold text-xs bg-orange-50 dark:bg-stone-800 border border-orange-100 dark:border-stone-700 px-2 py-0.5 rounded-md shrink-0">
+                        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                        <span>{provider.rating.toFixed(1)}</span>
+                      </div>
+                    </div>
 
-                  {/* Actions */}
-                  <div className="mt-auto pt-2 flex gap-3 items-center">
-                    <button
-                      onClick={() => onBookWithAI(`I'd like to book an appointment with ${provider.name} at ${provider.location}`)}
-                      className="flex-1 bg-gradient-to-r from-[#b02f00] to-[#ff5722] hover:from-[#902700] hover:to-[#e64a19] text-white font-bold text-xs sm:text-sm py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_10px_25px_rgba(255,87,34,0.2)] hover:shadow-[0_12px_30px_rgba(255,87,34,0.3)] transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                      <span>Chat to Book</span>
-                    </button>
+                    <p className="text-stone-500 dark:text-stone-400 text-xs sm:text-sm font-medium mb-5">
+                      {provider.subtitle}
+                    </p>
 
-                    <button
-                      onClick={() => toggleFavorite(provider.id)}
-                      title={isFav ? "Remove from favorites" : "Save to favorites"}
-                      className={`w-11 h-11 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
-                        isFav
-                          ? "border-red-300 bg-red-50 text-red-500 shadow-xs"
-                          : "border-orange-200/80 dark:border-stone-700 hover:bg-orange-50 dark:hover:bg-stone-800 text-[#b02f00] dark:text-orange-400"
-                      }`}
-                    >
-                      <Heart className={`h-4 w-4 ${isFav ? "fill-red-500 text-red-500" : ""}`} />
-                    </button>
+                    {/* Actions */}
+                    <div className="mt-auto pt-2 flex gap-3 items-center">
+                      <button
+                        onClick={() => onBookWithAI(`I'd like to book an appointment with ${provider.name} at ${provider.location}`)}
+                        className="flex-1 bg-gradient-to-r from-[#b02f00] to-[#ff5722] hover:from-[#902700] hover:to-[#e64a19] text-white font-bold text-xs sm:text-sm py-3 rounded-xl flex items-center justify-center gap-2 shadow-[0_10px_25px_rgba(255,87,34,0.2)] hover:shadow-[0_12px_30px_rgba(255,87,34,0.3)] transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        <span>Chat to Book</span>
+                      </button>
+
+                      <button
+                        onClick={() => toggleFavorite(provider.id)}
+                        title={isFav ? "Remove from favorites" : "Save to favorites"}
+                        className={`w-11 h-11 rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
+                          isFav
+                            ? "border-red-300 bg-red-50 text-red-500 shadow-xs"
+                            : "border-orange-200/80 dark:border-stone-700 hover:bg-orange-50 dark:hover:bg-stone-800 text-[#b02f00] dark:text-orange-400"
+                        }`}
+                      >
+                        <Heart className={`h-4 w-4 ${isFav ? "fill-red-500 text-red-500" : ""}`} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </motion.article>
-            )
-          })}
-        </div>
+                </motion.article>
+              )
+            })}
+          </div>
+        ) : (
+          <div className="glass-card rounded-2xl p-12 text-center border border-dashed border-orange-200 dark:border-stone-800 bg-white/50 dark:bg-stone-900/50 max-w-lg mx-auto">
+            <Sparkles className="h-10 w-10 text-[#ff5722] mx-auto mb-3 opacity-80" />
+            <h3 className="text-lg font-bold text-stone-800 dark:text-stone-200 mb-1">
+              No providers listed in this category yet
+            </h3>
+            <p className="text-xs text-stone-500 dark:text-stone-400 mb-6">
+              New businesses can register anytime. You can also chat directly with our AI scheduler to find or request appointment availability.
+            </p>
+            <button
+              onClick={() => handleAskAI()}
+              className="bg-gradient-to-r from-[#b02f00] to-[#ff5722] text-white font-bold text-xs px-6 py-2.5 rounded-full shadow-md hover:scale-105 transition-all cursor-pointer inline-flex items-center gap-2"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span>Ask AI Scheduler</span>
+            </button>
+          </div>
+        )}
       </section>
 
       {/* ─── 3. Floating Persistent AI Assistant & FAB ──────────────────────── */}
