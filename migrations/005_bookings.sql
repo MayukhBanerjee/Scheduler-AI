@@ -79,21 +79,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS unique_active_provider_slot
 -- Prevents bookings that OVERLAP in time (not just exact match).
 -- e.g. A 09:00-10:00 booking blocks 09:30 even if start_time differs.
 -- Requires btree_gist extension (001_enable_extensions.sql).
-DO $$ BEGIN
-  ALTER TABLE bookings ADD CONSTRAINT no_overlapping_bookings
-    EXCLUDE USING GIST (
-      provider_id     WITH =,
-      date            WITH =,
-      tsrange(
-        date + start_time,
-        date + end_time,
-        '[)'
-      )               WITH &&
-    )
-    WHERE (status IN ('confirmed', 'pending', 'completed'));
-EXCEPTION
-  WHEN duplicate_object THEN NULL;
-END $$;
+ALTER TABLE bookings DROP CONSTRAINT IF EXISTS no_overlapping_bookings;
+ALTER TABLE bookings ADD CONSTRAINT no_overlapping_bookings
+  EXCLUDE USING GIST (
+    provider_id     WITH =,
+    date            WITH =,
+    tsrange(
+      date + start_time,
+      date + end_time,
+      '[)'
+    )               WITH &&
+  )
+  WHERE (status IN ('confirmed', 'pending', 'completed'));
 
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_bookings_user_id       ON bookings(user_id);
