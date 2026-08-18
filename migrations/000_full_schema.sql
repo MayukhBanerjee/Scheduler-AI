@@ -706,7 +706,7 @@ CREATE POLICY "conflicts_read_parties" ON booking_conflicts
   FOR SELECT USING (
     auth.uid() = (SELECT user_id FROM bookings WHERE id = booking_a_id) OR
     auth.uid() = (SELECT user_id FROM bookings WHERE id = booking_b_id) OR
-    auth.uid() = (SELECT user_id FROM provider_profiles pp JOIN bookings b ON b.provider_id = pp.id WHERE b.id = booking_a_id LIMIT 1)
+    auth.uid() = (SELECT pp.user_id FROM provider_profiles pp JOIN bookings b ON b.provider_id = pp.id WHERE b.id = booking_a_id LIMIT 1)
   );
 
 -- ── Trigger: auto-create calendar events from confirmed bookings ───────────────
