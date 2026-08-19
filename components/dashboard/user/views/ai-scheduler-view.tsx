@@ -14,6 +14,7 @@ interface AISchedulerViewProps {
   isListening: boolean
   speechSupported: boolean
   toggleVoice: () => void
+  openVoiceCall?: () => void
   handleSendMessage: (customText?: string) => void
   handleKeyPress: (e: React.KeyboardEvent) => void
   bookingInProgress: string | null
@@ -36,6 +37,7 @@ export function AISchedulerView({
   isListening,
   speechSupported,
   toggleVoice,
+  openVoiceCall,
   handleSendMessage,
   handleKeyPress,
   bookingInProgress,
@@ -61,6 +63,7 @@ export function AISchedulerView({
           isListening={isListening}
           speechSupported={speechSupported}
           toggleVoice={toggleVoice}
+          openVoiceCall={openVoiceCall}
           handleSendMessage={handleSendMessage}
           handleKeyPress={handleKeyPress}
           bookingInProgress={bookingInProgress}

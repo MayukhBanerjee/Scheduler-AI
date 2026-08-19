@@ -11,6 +11,7 @@ import {
   CHAT_STORAGE_KEY,
 } from "@/components/dashboard/user/types"
 import { AISchedulerView } from "@/components/dashboard/user/views/ai-scheduler-view"
+import { LiveVoiceCallModal } from "@/components/dashboard/user/live-voice-call-modal"
 
 function renderRichText(content: string) {
   const parts: React.ReactNode[] = []
@@ -61,6 +62,7 @@ export default function AISchedulePage() {
   const [myBookings, setMyBookings] = useState<BookingRow[]>([])
   const [calendarKey, setCalendarKey] = useState(0)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [isVoiceCallOpen, setIsVoiceCallOpen] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -391,26 +393,38 @@ export default function AISchedulePage() {
   }
 
   return (
-    <AISchedulerView
-      messages={messages}
-      inputMessage={inputMessage}
-      setInputMessage={setInputMessage}
-      isTyping={isTyping}
-      isListening={isListening}
-      speechSupported={speechSupported}
-      toggleVoice={toggleVoice}
-      handleSendMessage={handleSendMessage}
-      handleKeyPress={handleKeyPress}
-      bookingInProgress={bookingInProgress}
-      handleBookService={handleBookService}
-      messagesEndRef={messagesEndRef}
-      inputRef={inputRef}
-      renderRichText={renderRichText}
-      bookings={myBookings}
-      onViewAllBookings={() => router.push("/dashboard/user/bookings")}
-      onCancelBooking={handleCancelBooking}
-      cancellingId={cancellingId}
-      calendarKey={calendarKey}
-    />
+    <>
+      <AISchedulerView
+        messages={messages}
+        inputMessage={inputMessage}
+        setInputMessage={setInputMessage}
+        isTyping={isTyping}
+        isListening={isListening}
+        speechSupported={speechSupported}
+        toggleVoice={toggleVoice}
+        openVoiceCall={() => setIsVoiceCallOpen(true)}
+        handleSendMessage={handleSendMessage}
+        handleKeyPress={handleKeyPress}
+        bookingInProgress={bookingInProgress}
+        handleBookService={handleBookService}
+        messagesEndRef={messagesEndRef}
+        inputRef={inputRef}
+        renderRichText={renderRichText}
+        bookings={myBookings}
+        onViewAllBookings={() => router.push("/dashboard/user/bookings")}
+        onCancelBooking={handleCancelBooking}
+        cancellingId={cancellingId}
+        calendarKey={calendarKey}
+      />
+
+      <LiveVoiceCallModal
+        isOpen={isVoiceCallOpen}
+        onClose={() => setIsVoiceCallOpen(false)}
+        conversationId={conversationId}
+        onNewMessage={(msg) => setMessages((prev) => [...prev, msg])}
+        onBookService={handleBookService}
+        bookingInProgress={bookingInProgress}
+      />
+    </>
   )
 }
