@@ -52,7 +52,60 @@ def _extract_text(content: Any) -> str:
     return str(content)
 
 
-def invoke_llm(messages: list) -> str:
+def invoke_bedrock(messages: list) -> str:
+    """Invoke Amazon Bedrock Converse API using Bedrock API key."""
+    api_key = os.getenv("BEDROCK_API_KEY") or os.getenv("AWS_BEARER_TOKEN_BEDROCK")
+    if not api_key:
+        raise ValueError("BEDROCK_API_KEY not found in environment.")
+
+    region = os.getenv("AWS_REGION", "us-east-1").strip()
+    model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-micro-v1:0").strip()
+
+    # Extract system text and user text from messages
+    system_text = ""
+    user_text = ""
+    for msg in messages:
+        content = getattr(msg, "content", "")
+        if isinstance(content, list):
+            content = _extract_text(content)
+        if isinstance(msg, SystemMessage):
+            system_text = str(content)
+        elif isinstance(msg, HumanMessage):
+            user_text = str(content)
+        else:
+            user_text = str(content)
+
+    payload = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [{"text": user_text}],
+            }
+        ],
+        "inferenceConfig": {
+            "temperature": 0.2,
+            "maxTokens": 1000,
+        },
+    }
+    if system_text:
+        payload["system"] = [{"text": system_text}]
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    import httpx
+    url = f"https://bedrock-runtime.{region}.amazonaws.com/model/{model_id}/converse"
+    with httpx.Client(timeout=20.0) as client:
+        resp = client.post(url, json=payload, headers=headers)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Bedrock HTTP {resp.status_code}: {resp.text}")
+        data = resp.json()
+        return data["output"]["message"]["content"][0]["text"].strip()
+
+
+def invoke_gemini(messages: list) -> str:
     """Invoke Gemini model using GEMINI_API_KEY (strictly 1 LLM call per request)."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -72,10 +125,25 @@ def invoke_llm(messages: list) -> str:
             return _extract_text(resp.content).strip()
         except Exception as e:
             last_err = e
-            print(f"[LLM] Model '{model_name}' error: {e}")
+            print(f"[LLM] Gemini '{model_name}' error: {e}")
             continue
 
     raise last_err or RuntimeError("Failed to invoke Gemini model.")
+
+
+def invoke_llm(messages: list) -> str:
+    """Invoke primary LLM (Bedrock or Gemini) with automatic fallback."""
+    provider = os.getenv("LLM_PROVIDER", "").lower().strip()
+    bedrock_key = os.getenv("BEDROCK_API_KEY") or os.getenv("AWS_BEARER_TOKEN_BEDROCK")
+
+    # If Bedrock is explicitly requested or a Bedrock key is configured
+    if provider == "bedrock" or (not provider and bedrock_key):
+        try:
+            return invoke_bedrock(messages)
+        except Exception as e:
+            print(f"[LLM] Bedrock invocation note: {e}. Falling back to Gemini...")
+
+    return invoke_gemini(messages)
 
 
 class AgentState(TypedDict):
