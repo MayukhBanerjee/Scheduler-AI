@@ -59,7 +59,11 @@ def invoke_bedrock(messages: list) -> str:
         raise ValueError("BEDROCK_API_KEY not found in environment.")
 
     region = os.getenv("AWS_REGION", "us-east-1").strip()
-    model_id = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-micro-v1:0").strip()
+    preferred = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-micro-v1:0").strip()
+    candidate_models = [preferred]
+    for fallback_model in ["amazon.nova-micro-v1:0", "amazon.nova-lite-v1:0", "us.anthropic.claude-3-5-haiku-20241022-v1:0"]:
+        if fallback_model not in candidate_models:
+            candidate_models.append(fallback_model)
 
     # Extract system text and user text from messages
     system_text = ""
@@ -96,13 +100,21 @@ def invoke_bedrock(messages: list) -> str:
     }
 
     import httpx
-    url = f"https://bedrock-runtime.{region}.amazonaws.com/model/{model_id}/converse"
+    last_err = None
     with httpx.Client(timeout=20.0) as client:
-        resp = client.post(url, json=payload, headers=headers)
-        if resp.status_code != 200:
-            raise RuntimeError(f"Bedrock HTTP {resp.status_code}: {resp.text}")
-        data = resp.json()
-        return data["output"]["message"]["content"][0]["text"].strip()
+        for model_id in candidate_models:
+            try:
+                url = f"https://bedrock-runtime.{region}.amazonaws.com/model/{model_id}/converse"
+                resp = client.post(url, json=payload, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return data["output"]["message"]["content"][0]["text"].strip()
+                last_err = RuntimeError(f"Bedrock ({model_id}) HTTP {resp.status_code}: {resp.text}")
+            except Exception as e:
+                last_err = e
+                continue
+
+    raise last_err or RuntimeError("Bedrock model invocation failed.")
 
 
 def invoke_gemini(messages: list) -> str:
