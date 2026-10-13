@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
+export const maxDuration = 60; // Up to 60s timeout for Render container cold starts
+
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 const BACKEND_API_KEY = process.env.BACKEND_API_KEY || "";
 

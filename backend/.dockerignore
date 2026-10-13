@@ -1,0 +1,29 @@
+# Git
+.git
+.gitignore
+
+# Python virtual environment & cache
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environment files with secrets
+.env
+.env.*
+!.env.example
+
+# IDE & Editor configs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing & logs
+.pytest_cache/
+.coverage
+htmlcov/
+*.log

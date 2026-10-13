@@ -1,0 +1,27 @@
+# ==============================================================================
+# Render Blueprint Specification for ScheduleAI Backend
+# https://render.com/docs/blueprint-spec
+# ==============================================================================
+
+services:
+  - type: web
+    name: scheduleai-backend
+    runtime: docker
+    dockerContext: backend
+    dockerfilePath: backend/Dockerfile
+    plan: free # Change to starter/standard for production workloads
+    region: oregon # Choose: oregon, ohio, frankfurt, singapore
+    healthCheckPath: /
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false # Set in Render Dashboard -> Environment
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: BACKEND_API_KEY
+        sync: false # Shared API key matching Vercel's BACKEND_API_KEY
+      - key: CORS_ORIGINS
+        sync: false # Set to your Vercel URL (e.g. https://your-project.vercel.app)
