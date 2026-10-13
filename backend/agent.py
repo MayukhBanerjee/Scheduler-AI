@@ -53,51 +53,35 @@ def _extract_text(content: Any) -> str:
 
 
 def invoke_bedrock(messages: list) -> str:
-    """Invoke Amazon Bedrock Converse API using Bedrock API key."""
+    """Invoke Amazon Bedrock Mantle / Studio API using OpenAI-compatible schema."""
     api_key = os.getenv("BEDROCK_API_KEY") or os.getenv("AWS_BEARER_TOKEN_BEDROCK")
     if not api_key:
         raise ValueError("BEDROCK_API_KEY not found in environment.")
 
     region = os.getenv("AWS_REGION", "ap-south-1").strip()
-    preferred = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0").strip()
+    preferred = os.getenv("BEDROCK_MODEL_ID", "google.gemma-3-12b-it").strip()
     candidate_models = [preferred]
     for fallback_model in [
-        "anthropic.claude-3-haiku-20240307-v1:0",
-        "amazon.nova-micro-v1:0",
-        "meta.llama3-8b-instruct-v1:0",
-        "mistral.mistral-7b-instruct-v0:2",
+        "google.gemma-3-12b-it",
+        "google.gemma-3-4b-it",
+        "zai.glm-4.7-flash",
+        "qwen.qwen3-32b",
     ]:
         if fallback_model not in candidate_models:
             candidate_models.append(fallback_model)
 
-    # Extract system text and user text from messages
-    system_text = ""
-    user_text = ""
+    # Format messages to OpenAI chat format
+    openai_messages = []
     for msg in messages:
         content = getattr(msg, "content", "")
         if isinstance(content, list):
             content = _extract_text(content)
+        role = "user"
         if isinstance(msg, SystemMessage):
-            system_text = str(content)
+            role = "system"
         elif isinstance(msg, HumanMessage):
-            user_text = str(content)
-        else:
-            user_text = str(content)
-
-    payload = {
-        "messages": [
-            {
-                "role": "user",
-                "content": [{"text": user_text}],
-            }
-        ],
-        "inferenceConfig": {
-            "temperature": 0.2,
-            "maxTokens": 1000,
-        },
-    }
-    if system_text:
-        payload["system"] = [{"text": system_text}]
+            role = "user"
+        openai_messages.append({"role": role, "content": str(content)})
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -105,21 +89,32 @@ def invoke_bedrock(messages: list) -> str:
     }
 
     import httpx
+    endpoint = os.getenv(
+        "BEDROCK_ENDPOINT",
+        f"https://bedrock-mantle.{region}.api.aws/v1/chat/completions",
+    ).strip()
+
     last_err = None
-    with httpx.Client(timeout=20.0) as client:
+    with httpx.Client(timeout=25.0) as client:
         for model_id in candidate_models:
             try:
-                url = f"https://bedrock-runtime.{region}.amazonaws.com/model/{model_id}/converse"
-                resp = client.post(url, json=payload, headers=headers)
+                payload = {
+                    "model": model_id,
+                    "messages": openai_messages,
+                    "temperature": 0.2,
+                }
+                resp = client.post(endpoint, json=payload, headers=headers)
                 if resp.status_code == 200:
                     data = resp.json()
-                    return data["output"]["message"]["content"][0]["text"].strip()
-                last_err = RuntimeError(f"Bedrock ({model_id}) HTTP {resp.status_code}: {resp.text}")
+                    choices = data.get("choices") or []
+                    if choices and "message" in choices[0]:
+                        return choices[0]["message"]["content"].strip()
+                last_err = RuntimeError(f"Bedrock Mantle ({model_id}) HTTP {resp.status_code}: {resp.text}")
             except Exception as e:
                 last_err = e
                 continue
 
-    raise last_err or RuntimeError("Bedrock model invocation failed.")
+    raise last_err or RuntimeError("Bedrock Mantle model invocation failed.")
 
 
 def invoke_gemini(messages: list) -> str:
