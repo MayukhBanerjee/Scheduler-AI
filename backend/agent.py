@@ -58,10 +58,15 @@ def invoke_bedrock(messages: list) -> str:
     if not api_key:
         raise ValueError("BEDROCK_API_KEY not found in environment.")
 
-    region = os.getenv("AWS_REGION", "us-east-1").strip()
-    preferred = os.getenv("BEDROCK_MODEL_ID", "amazon.nova-micro-v1:0").strip()
+    region = os.getenv("AWS_REGION", "ap-south-1").strip()
+    preferred = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0").strip()
     candidate_models = [preferred]
-    for fallback_model in ["amazon.nova-micro-v1:0", "amazon.nova-lite-v1:0", "us.anthropic.claude-3-5-haiku-20241022-v1:0"]:
+    for fallback_model in [
+        "anthropic.claude-3-haiku-20240307-v1:0",
+        "amazon.nova-micro-v1:0",
+        "meta.llama3-8b-instruct-v1:0",
+        "mistral.mistral-7b-instruct-v0:2",
+    ]:
         if fallback_model not in candidate_models:
             candidate_models.append(fallback_model)
 
