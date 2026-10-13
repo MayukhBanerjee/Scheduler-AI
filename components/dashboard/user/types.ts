@@ -7,7 +7,7 @@ export interface Message {
   content: string
   sender: "user" | "ai"
   timestamp: Date
-  type?: "booking" | "confirmation" | "general" | "results" | "clarification"
+  type?: "booking" | "confirmation" | "general" | "results" | "clarification" | "service_list"
   services?: ServiceResult[]
 }
 

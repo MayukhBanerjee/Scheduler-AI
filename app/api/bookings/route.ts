@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
@@ -163,16 +163,47 @@ export async function GET(req: Request) {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (session.role !== "user") {
-      return NextResponse.json(
-        { error: "Only customer accounts can view bookings this way" },
-        { status: 403 }
-      );
-    }
 
     const { searchParams } = new URL(req.url);
     const statusFilter = searchParams.get("status");
 
+    // Provider Role: Query bookings associated with their provider profile
+    if (session.role === "provider") {
+      const { data: profile } = await supabaseAdmin
+        .from("provider_profiles")
+        .select("id")
+        .eq("user_id", session.userId)
+        .single();
+
+      if (!profile) {
+        return NextResponse.json({ bookings: [] });
+      }
+
+      let query = supabaseAdmin
+        .from("bookings")
+        .select("*")
+        .eq("provider_id", profile.id)
+        .order("date", { ascending: false })
+        .order("start_time", { ascending: false })
+        .limit(100);
+
+      if (statusFilter) {
+        query = query.eq("status", statusFilter);
+      }
+
+      const { data: bookings, error } = await query;
+      if (error) throw error;
+
+      return NextResponse.json({
+        bookings: (bookings ?? []).map((b) => ({
+          ...b,
+          _id: b.id,
+          time: b.start_time?.substring(0, 5),
+        })),
+      });
+    }
+
+    // Customer Role: Query bookings created by this user
     let query = supabaseAdmin
       .from("bookings")
       .select("*")
