@@ -27,6 +27,7 @@ interface AISchedulerViewProps {
   onCancelBooking: (id: string) => void
   cancellingId: string | null
   calendarKey: number
+  onNewConversation?: () => void
 }
 
 export function AISchedulerView({
@@ -50,6 +51,7 @@ export function AISchedulerView({
   onCancelBooking,
   cancellingId,
   calendarKey,
+  onNewConversation,
 }: AISchedulerViewProps) {
   return (
     <div className="h-full w-full flex flex-col lg:flex-row gap-4 min-h-0 overflow-hidden">
@@ -71,6 +73,7 @@ export function AISchedulerView({
           messagesEndRef={messagesEndRef}
           inputRef={inputRef}
           renderRichText={renderRichText}
+          onNewConversation={onNewConversation}
         />
       </section>
 

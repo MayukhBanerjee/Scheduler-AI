@@ -1,10 +1,13 @@
 "use client"
 
 import type React from "react"
+import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Bot, User, Mic, Send, Loader2 } from "lucide-react"
+import { Bot, User, Mic, Send, Loader2, PlusCircle, Check, X } from "lucide-react"
 import { Message, ServiceResult } from "./types"
 import { ServiceCard } from "./service-card"
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 interface ChatInterfaceProps {
   messages: Message[]
@@ -22,7 +25,92 @@ interface ChatInterfaceProps {
   messagesEndRef: React.RefObject<HTMLDivElement | null>
   inputRef: React.RefObject<HTMLInputElement | null>
   renderRichText: (content: string) => React.ReactNode
+  onNewConversation?: () => void
 }
+
+// ─── New Chat Button with 2-step confirmation ─────────────────────────────────
+
+function NewChatButton({
+  onConfirm,
+  hasMessages,
+}: {
+  onConfirm: () => void
+  hasMessages: boolean
+}) {
+  const [confirming, setConfirming] = useState(false)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Auto-dismiss after 4 seconds if user doesn't confirm
+  useEffect(() => {
+    if (confirming) {
+      timerRef.current = setTimeout(() => setConfirming(false), 4000)
+    }
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [confirming])
+
+  const handleClick = () => {
+    // If no real messages (only welcome), just start fresh immediately
+    if (!hasMessages) {
+      onConfirm()
+      return
+    }
+    setConfirming(true)
+  }
+
+  const handleConfirm = () => {
+    setConfirming(false)
+    onConfirm()
+  }
+
+  if (!confirming) {
+    return (
+      <button
+        type="button"
+        onClick={handleClick}
+        title="Start a new conversation"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/80 dark:bg-stone-800/80 hover:bg-orange-50 dark:hover:bg-stone-700 text-stone-600 dark:text-stone-300 hover:text-[#b02f00] dark:hover:text-orange-400 text-xs font-bold border border-orange-200/50 dark:border-stone-700 shadow-sm hover:shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
+      >
+        <PlusCircle className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">New Chat</span>
+      </button>
+    )
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 dark:bg-stone-800 border border-orange-300/60 dark:border-orange-700/40 shadow-sm"
+    >
+      <span className="text-[11px] font-bold text-stone-700 dark:text-stone-200 whitespace-nowrap">
+        Start fresh?
+      </span>
+      {/* Confirm */}
+      <button
+        type="button"
+        onClick={handleConfirm}
+        title="Yes — start new conversation"
+        className="w-5 h-5 rounded-full bg-[#b02f00] hover:bg-[#902700] text-white flex items-center justify-center transition-all active:scale-90 cursor-pointer"
+      >
+        <Check className="h-3 w-3" />
+      </button>
+      {/* Cancel */}
+      <button
+        type="button"
+        onClick={() => setConfirming(false)}
+        title="Cancel"
+        className="w-5 h-5 rounded-full bg-stone-200 dark:bg-stone-700 hover:bg-stone-300 dark:hover:bg-stone-600 text-stone-600 dark:text-stone-300 flex items-center justify-center transition-all active:scale-90 cursor-pointer"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </motion.div>
+  )
+}
+
+// ─── Chat Interface ───────────────────────────────────────────────────────────
 
 export function ChatInterface({
   messages,
@@ -40,12 +128,14 @@ export function ChatInterface({
   messagesEndRef,
   inputRef,
   renderRichText,
+  onNewConversation,
 }: ChatInterfaceProps) {
   const triggerLiveVoice = openVoiceCall || toggleVoice
 
   return (
     <div className="glass-card rounded-[1.75rem] h-full flex-1 flex flex-col relative overflow-hidden min-h-0 bg-white/70 dark:bg-stone-900/70 backdrop-blur-xl border border-white/60 dark:border-stone-800 shadow-[0_4px_30px_rgba(0,0,0,0.04)]">
-      {/* Chat Header */}
+
+      {/* ── Chat Header ── */}
       <div className="p-3.5 sm:p-4 border-b border-orange-100/60 dark:border-stone-800 flex justify-between items-center bg-white/40 dark:bg-stone-950/40 backdrop-blur-md shrink-0 z-10">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-orange-500/15 text-[#b02f00] dark:text-orange-400 flex items-center justify-center shadow-xs shrink-0">
@@ -62,8 +152,17 @@ export function ChatInterface({
           </div>
         </div>
 
-        {/* Live Call Action Button */}
+        {/* Header Actions */}
         <div className="flex items-center gap-2">
+          {/* New Chat */}
+          {onNewConversation && (
+            <NewChatButton
+              onConfirm={onNewConversation}
+              hasMessages={messages.length > 1}
+            />
+          )}
+
+          {/* Live Call */}
           <button
             type="button"
             onClick={triggerLiveVoice}
@@ -76,7 +175,7 @@ export function ChatInterface({
         </div>
       </div>
 
-      {/* Chat Messages Scrollable Area */}
+      {/* ── Messages Scroll Area ── */}
       <div className="flex-1 p-3.5 sm:p-4 overflow-y-auto flex flex-col gap-3.5 min-h-0">
         <AnimatePresence initial={false}>
           {messages.map((message) => (
@@ -84,6 +183,7 @@ export function ChatInterface({
               key={message.id}
               initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10, transition: { duration: 0.15 } }}
               transition={{ duration: 0.3 }}
               className={`flex gap-2.5 max-w-[88%] ${message.sender === "user" ? "self-end flex-row-reverse" : "self-start"}`}
             >
@@ -98,7 +198,7 @@ export function ChatInterface({
                 {message.sender === "user" ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
               </div>
 
-              {/* Bubble Content */}
+              {/* Bubble */}
               <div className="flex flex-col gap-1 min-w-0">
                 <div
                   className={`px-4 py-3 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-xs ${
@@ -110,7 +210,7 @@ export function ChatInterface({
                   <p className="whitespace-pre-wrap font-sans">{renderRichText(message.content)}</p>
                 </div>
 
-                {/* Service List Cards */}
+                {/* Service Cards */}
                 {message.services && message.services.length > 0 && (
                   <div className="flex flex-col gap-2.5 mt-2 w-full">
                     {message.services.map((service) => (
@@ -155,7 +255,7 @@ export function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Bar */}
+      {/* ── Input Bar ── */}
       <div className="p-3 bg-white/50 dark:bg-stone-950/50 backdrop-blur-md border-t border-orange-100/60 dark:border-stone-800 shrink-0 z-10">
         <div className="relative flex items-center">
           <input
@@ -169,7 +269,7 @@ export function ChatInterface({
             className="w-full bg-white/90 dark:bg-stone-900/90 border border-orange-200/60 dark:border-stone-700 rounded-full py-2.5 pl-5 pr-20 text-xs sm:text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:border-[#b02f00] focus:ring-2 focus:ring-orange-500/20 transition-all shadow-inner placeholder:text-stone-400"
           />
 
-          {/* Inline Mic Trigger */}
+          {/* Inline Mic */}
           <button
             type="button"
             onClick={triggerLiveVoice}
@@ -179,7 +279,7 @@ export function ChatInterface({
             <Mic className="h-3.5 w-3.5" />
           </button>
 
-          {/* Send Button */}
+          {/* Send */}
           <button
             type="button"
             onClick={() => handleSendMessage()}

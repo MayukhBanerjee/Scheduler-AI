@@ -78,8 +78,9 @@ export default function AISchedulePage() {
     type: "general",
   }
 
-  // 1. Hydrate chat from LocalStorage
+  // 1. Hydrate chat from Database (Supabase PostgreSQL) + LocalStorage cache
   useEffect(() => {
+    let localLoaded = false;
     try {
       const raw = localStorage.getItem(CHAT_STORAGE_KEY)
       if (raw) {
@@ -95,16 +96,44 @@ export default function AISchedulePage() {
               timestamp: new Date(m.timestamp),
             }))
           )
-        } else {
-          setMessages([defaultWelcome])
+          localLoaded = true
         }
-      } else {
-        setMessages([defaultWelcome])
       }
     } catch {
+      /* ignore */
+    }
+
+    if (!localLoaded) {
       setMessages([defaultWelcome])
     }
-    hydratedRef.current = true
+
+    // Sync authoritative conversation history from Supabase database for this user
+    async function loadDbHistory() {
+      try {
+        const res = await fetch("/api/chat")
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.conversation_id && Array.isArray(data.messages) && data.messages.length > 0) {
+          setConversationId(data.conversation_id)
+          setMessages(
+            data.messages.map((m: { id: string; content: string; sender: "user" | "ai"; timestamp: string; type?: string; services?: ServiceResult[] }) => ({
+              id: m.id,
+              content: m.content,
+              sender: m.sender,
+              timestamp: new Date(m.timestamp),
+              type: m.type as any,
+              services: m.services,
+            }))
+          )
+        }
+      } catch (err) {
+        console.warn("[chat] Could not load DB history:", err)
+      } finally {
+        hydratedRef.current = true
+      }
+    }
+
+    loadDbHistory()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -392,6 +421,34 @@ export default function AISchedulePage() {
     }
   }
 
+  // 9. Handle New Conversation (Clear chat & start fresh thread)
+  const handleNewConversation = useCallback(() => {
+    const newConvId = `conv-${Date.now()}`
+    setConversationId(newConvId)
+    setMessages([defaultWelcome])
+    setInputMessage("")
+    try {
+      localStorage.setItem(
+        CHAT_STORAGE_KEY,
+        JSON.stringify({
+          conversationId: newConvId,
+          messages: [
+            {
+              ...defaultWelcome,
+              timestamp: defaultWelcome.timestamp.toISOString(),
+            },
+          ],
+        })
+      )
+    } catch {
+      /* ignore */
+    }
+    toast({
+      title: "New Conversation Started",
+      description: "Previous chat cleared. You are in a fresh thread!",
+    })
+  }, [toast])
+
   return (
     <>
       <AISchedulerView
@@ -415,6 +472,7 @@ export default function AISchedulePage() {
         onCancelBooking={handleCancelBooking}
         cancellingId={cancellingId}
         calendarKey={calendarKey}
+        onNewConversation={handleNewConversation}
       />
 
       <LiveVoiceCallModal
@@ -428,3 +486,4 @@ export default function AISchedulePage() {
     </>
   )
 }
+
