@@ -338,12 +338,19 @@ export async function POST(req: Request) {
 
     // 3. Attempt Python backend forward if configured and not local
     if (BACKEND_URL && !BACKEND_URL.includes("localhost")) {
+      const reqId = `req-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
+      const t0 = Date.now();
       try {
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "X-Request-ID": reqId,
+        };
         if (BACKEND_API_KEY) headers["X-API-Key"] = BACKEND_API_KEY;
 
+        console.log(`[chat API] [${reqId}] Forwarding to Render backend: ${BACKEND_URL}/chat`);
+
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout for container cold start
 
         const backendRes = await fetch(`${BACKEND_URL}/chat`, {
           method: "POST",
@@ -363,9 +370,12 @@ export async function POST(req: Request) {
         if (backendRes.ok) {
           data = await backendRes.json();
           backendSuccess = true;
+          console.log(`[chat API] [${reqId}] Render backend success (${Date.now() - t0}ms)`);
+        } else {
+          console.warn(`[chat API] [${reqId}] Render backend returned HTTP ${backendRes.status} (${Date.now() - t0}ms)`);
         }
       } catch (proxyErr) {
-        console.warn("[chat API] Python backend unreachable, invoking direct Bedrock agent fallback:", proxyErr);
+        console.warn(`[chat API] [${reqId}] Python backend unreachable (${Date.now() - t0}ms), invoking direct Bedrock agent fallback:`, proxyErr);
       }
     }
 

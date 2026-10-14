@@ -1,10 +1,11 @@
-﻿"""
+"""
 backend/main.py
 FastAPI backend for Universal Service Booking AI System (Supabase-powered)
 Author: Mayukh Banerjee
 """
 
 import os
+import time
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -14,6 +15,13 @@ from typing import Optional
 from models import ChatRequest, ChatResponse
 from agent import run_booking_agent
 from database import get_supabase, find_services, find_providers
+from observability import (
+    apply_health_check_filter,
+    ObservabilityMiddleware,
+    get_system_health,
+    telemetry,
+    logger,
+)
 
 load_dotenv()
 
@@ -23,7 +31,7 @@ BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "").strip()
 def verify_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
     if not BACKEND_API_KEY:
         # Dev fallback: allow if key not configured (local only)
-        print("[WARN] BACKEND_API_KEY not set — /chat is open. Set BACKEND_API_KEY for production.")
+        logger.warning("BACKEND_API_KEY not set — /chat is open. Set BACKEND_API_KEY for production.")
         return
     if not x_api_key or x_api_key != BACKEND_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
@@ -31,14 +39,16 @@ def verify_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 ScheduleAI backend starting up...")
+    # 1. Silence repetitive 200 OK health check logs from Render / load-balancers
+    apply_health_check_filter()
+    logger.info("🚀 ScheduleAI backend starting up with Observability Telemetry enabled.")
     try:
         sb = get_supabase()
-        print("✅ Supabase client initialized.")
+        logger.info("✅ Supabase client initialized and connected.")
     except Exception as e:
-        print(f"⚠️ Supabase init note: {e}")
+        logger.warning(f"⚠️ Supabase init note: {e}")
     yield
-    print("👋 ScheduleAI backend shutting down.")
+    logger.info("👋 ScheduleAI backend shutting down.")
 
 
 _cors_extra = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
@@ -50,10 +60,13 @@ _cors_origins = [
 
 app = FastAPI(
     title="ScheduleAI — Universal Service Booking API",
-    description="AI-powered service booking backend with LangGraph agent and Supabase",
-    version="2.2.0",
+    description="AI-powered service booking backend with LangGraph agent, Bedrock Mantle, and Supabase",
+    version="2.3.0",
     lifespan=lifespan,
 )
+
+# Attach Observability & Request Timing Middleware
+app.add_middleware(ObservabilityMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -65,13 +78,27 @@ app.add_middleware(
 
 
 @app.get("/", tags=["Health"])
-async def health():
+async def root_ping():
+    """Lightweight root healthcheck for Render liveness probes."""
     return {
         "status": "ok",
         "service": "ScheduleAI Universal Booking API",
-        "database": "Supabase PostgreSQL",
-        "version": "2.2.0",
+        "version": "2.3.0",
+        "uptime": telemetry.get_stats().get("uptime_formatted"),
     }
+
+
+@app.get("/health", tags=["Health"])
+@app.get("/ready", tags=["Health"])
+async def health_diagnostics():
+    """Deep observability endpoint inspecting database latency, LLM status, and request metrics."""
+    return await get_system_health(check_db=True)
+
+
+@app.get("/metrics", tags=["Health"])
+async def telemetry_metrics():
+    """Fast in-memory telemetry metrics for monitoring."""
+    return telemetry.get_stats()
 
 
 @app.post("/chat", response_model=ChatResponse, tags=["Agent"], dependencies=[Depends(verify_api_key)])
@@ -80,7 +107,10 @@ async def chat(request: ChatRequest):
     Main chat endpoint — runs the 6-node LangGraph booking agent.
     Requires X-API-Key matching BACKEND_API_KEY.
     """
-    print(f"[/chat] user={request.user_id} | msg={request.message!r}")
+    t0 = time.perf_counter()
+    logger.info(
+        f"💬 [/chat] user={request.user_id} | conv={request.conversation_id} | query={request.message!r}"
+    )
     try:
         history = []
         if request.messages:
@@ -92,15 +122,25 @@ async def chat(request: ChatRequest):
             conversation_id=request.conversation_id or f"{request.user_id}-default",
             history=history,
         )
+
+        matched_services = result.get("services") or []
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+
+        logger.info(
+            f"✨ [/chat SUCCESS] user={request.user_id} ({duration_ms:.1f}ms) | "
+            f"matched={len(matched_services)} services | clarification={result.get('needs_clarification', False)}"
+        )
+
         return ChatResponse(
             reply=result["reply"],
-            services=result.get("services") or [],
+            services=matched_services,
             needs_clarification=result.get("needs_clarification", False),
             clarification_question=result.get("clarification_question"),
             intent=result.get("intent"),
         )
     except Exception as e:
-        print(f"[/chat] ERROR: {e}")
+        duration_ms = (time.perf_counter() - t0) * 1000.0
+        logger.error(f"❌ [/chat ERROR] after {duration_ms:.1f}ms: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
