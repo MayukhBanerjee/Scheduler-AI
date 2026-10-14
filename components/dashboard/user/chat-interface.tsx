@@ -3,9 +3,18 @@
 import type React from "react"
 import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Bot, User, Mic, Send, Loader2, PlusCircle, Check, X } from "lucide-react"
+import { Bot, User, Mic, Send, Loader2, PlusCircle, Check, X, Sparkles } from "lucide-react"
 import { Message, ServiceResult } from "./types"
 import { ServiceCard } from "./service-card"
+
+const QUICK_PROMPTS = [
+  { label: "👋 How's your day?", text: "Hey! How's your day going?" },
+  { label: "💆 Help me unwind", text: "I had such a stressful week, help me unwind." },
+  { label: "💇 Haircut in Indiranagar", text: "Can you recommend the best place for a haircut in Indiranagar?" },
+  { label: "✨ Balayage vs Highlights", text: "What's the difference between balayage and highlights?" },
+  { label: "🦷 Dental Cleaning advice", text: "How often should I actually get my teeth cleaned?" },
+  { label: "☕ Work cafes in Bangalore", text: "What are some of the best quiet work cafes in Bangalore?" },
+]
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -138,16 +147,17 @@ export function ChatInterface({
       {/* ── Chat Header ── */}
       <div className="p-3.5 sm:p-4 border-b border-orange-100/60 dark:border-stone-800 flex justify-between items-center bg-white/40 dark:bg-stone-950/40 backdrop-blur-md shrink-0 z-10">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-orange-500/15 text-[#b02f00] dark:text-orange-400 flex items-center justify-center shadow-xs shrink-0">
-            <Bot className="h-4 w-4" />
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#b02f00]/15 to-orange-500/20 text-[#b02f00] dark:text-orange-400 flex items-center justify-center shadow-xs shrink-0 ring-1 ring-orange-500/20">
+            <Sparkles className="h-4 w-4 text-[#b02f00] dark:text-orange-400" />
           </div>
           <div>
-            <h2 className="font-extrabold text-sm sm:text-base text-stone-900 dark:text-stone-100 tracking-tight leading-tight">
-              AI Booking Assistant
+            <h2 className="font-extrabold text-sm sm:text-base text-stone-900 dark:text-stone-100 tracking-tight leading-tight flex items-center gap-1.5">
+              <span>ScheduleAI</span>
+              <span className="text-[11px] font-medium text-stone-500 dark:text-stone-400 hidden sm:inline">• Your All-Knowing AI Friend</span>
             </h2>
-            <p className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+            <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Verified Availability Engine
+              Always online • Casual chat, expert advice & verified booking
             </p>
           </div>
         </div>
@@ -255,6 +265,26 @@ export function ChatInterface({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* ── Quick Conversational Starters Bar ── */}
+      <div className="px-3 pt-2 pb-1.5 border-t border-orange-100/60 dark:border-stone-800 bg-white/30 dark:bg-stone-950/30 backdrop-blur-xs shrink-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <span className="text-[10px] font-bold text-stone-400 dark:text-stone-500 uppercase tracking-wider shrink-0 px-1">
+            Try:
+          </span>
+          {QUICK_PROMPTS.map((qp, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleSendMessage(qp.text)}
+              disabled={isTyping}
+              className="text-[11px] font-medium whitespace-nowrap px-2.5 py-1 rounded-full bg-white/90 dark:bg-stone-800/90 hover:bg-orange-50 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 hover:text-[#b02f00] dark:hover:text-orange-400 border border-orange-200/60 dark:border-stone-700 shadow-2xs hover:shadow-xs active:scale-95 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+            >
+              {qp.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* ── Input Bar ── */}
       <div className="p-3 bg-white/50 dark:bg-stone-950/50 backdrop-blur-md border-t border-orange-100/60 dark:border-stone-800 shrink-0 z-10">
         <div className="relative flex items-center">
@@ -264,7 +294,7 @@ export function ChatInterface({
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="e.g. haircut tomorrow afternoon, or tap mic..."
+            placeholder="Ask me anything, chat about your day, or book a service..."
             disabled={isTyping}
             className="w-full bg-white/90 dark:bg-stone-900/90 border border-orange-200/60 dark:border-stone-700 rounded-full py-2.5 pl-5 pr-20 text-xs sm:text-sm text-stone-900 dark:text-stone-100 focus:outline-none focus:border-[#b02f00] focus:ring-2 focus:ring-orange-500/20 transition-all shadow-inner placeholder:text-stone-400"
           />

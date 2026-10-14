@@ -118,18 +118,8 @@ async function runDirectBedrockChat(message: string, history: Array<{ role: stri
     }> | null;
   }>;
 
-  // Match keyword relevance against user message
-  const lowerMsg = message.toLowerCase();
-  const matchedServices = servicesList.filter((s) => {
-    const nameMatch = s.name.toLowerCase().includes(lowerMsg);
-    const catMatch = s.category && lowerMsg.includes(s.category.toLowerCase());
-    const descMatch = s.description && s.description.toLowerCase().includes(lowerMsg);
-    return nameMatch || catMatch || descMatch;
-  });
-
-  const selected = matchedServices.length > 0 ? matchedServices.slice(0, 3) : servicesList.slice(0, 2);
-
-  const formattedServices = selected.map((s) => {
+  // Format catalog of verified services with available time slots
+  const formattedCatalog = servicesList.map((s) => {
     const rawProvider = s.provider_profiles;
     const provider = Array.isArray(rawProvider) ? rawProvider[0] : rawProvider;
     const slots = (provider?.availability_slots || [])
@@ -142,7 +132,7 @@ async function runDirectBedrockChat(message: string, history: Array<{ role: stri
       service_name: s.name,
       category: s.category || "General",
       provider_id: provider?.id || s.id,
-      provider_name: provider?.business_name || "ScheduleAI Provider",
+      provider_name: provider?.business_name || "ScheduleAI Verified Partner",
       provider_email: "",
       location: provider?.location || "Bangalore",
       price: s.price || 0,
@@ -155,25 +145,46 @@ async function runDirectBedrockChat(message: string, history: Array<{ role: stri
     };
   });
 
-  // Call Bedrock Mantle endpoint for natural language conversational reply
-  let replyText = "Here are the best available appointments matching your request:";
-  try {
-    const catalogSummary = formattedServices
-      .map((s) => `- ${s.service_name} (₹${s.price}, ${s.duration_minutes}m) at ${s.provider_name} in ${s.location}`)
-      .join("\n");
+  const catalogSummary = formattedCatalog
+    .map(
+      (s) =>
+        `- ID: ${s.service_id} | ${s.service_name} (₹${s.price}, ${s.duration_minutes}m, ${s.rating}★) at ${s.provider_name} in ${s.location}. Category: ${s.category}. Slots: ${s.available_slots.join(", ")}`
+    )
+    .join("\n");
 
+  const systemPrompt = `You are ScheduleAI — an ultra-knowledgeable, warm, witty, perceptive, and empathetic best friend who knows EVERYTHING.
+Think of yourself as that one worldly, savvy best friend who is always in the know: hair & styling, skincare, wellness, fitness routines, dentistry, cafes, life hacks, Bangalore hotspots (Indiranagar, Koramangala, Lavelle Rd, Church St, Whitefield, etc.), and scheduling.
+
+Your Tone & Guidelines:
+1. TALK LIKE A REAL BEST FRIEND:
+   - Speak with high emotional intelligence (EQ), warmth, natural conversational flair, light humor, and empathy.
+   - If the user says "Hello", "Hey", asks how you are, vents about their day, shares how they are feeling ("I'm so exhausted", "had a crazy day at work"), or chats casually:
+     Chat with them warmly and thoroughly like a real friend. Validate their feelings, share thoughts, or ask follow-up questions.
+     DO NOT push services, appointments, or booking cards on general conversation!
+2. OMNISCIENT & ACCESSIBLE KNOWLEDGE:
+   - If the user asks for advice or knowledge (e.g., difference between balayage and highlights, how to relieve tight neck/shoulders, workout routines, dental hygiene, best coffee in town):
+     Answer with deep, clear, insider expertise and friendly advice.
+3. CONTEXTUAL APPOINTMENT RECOMMENDATIONS:
+   - When the user explicitly asks for a recommendation, mentions wanting to book an appointment, or has a specific problem where a verified service in your catalog is the ideal solution (e.g. "I need a haircut", "My neck is super tense", "Recommend a dentist in Indiranagar", "Can you book a spa?"):
+     Share why you genuinely recommend the place like a trusted friend.
+     At the VERY END of your message, on its own new line, add:
+     [RECOMMEND: service_id_1, service_id_2] (using the exact IDs from the catalog below).
+4. If no service is directly requested or relevant, NEVER include [RECOMMEND:...].
+
+CATALOG OF VERIFIED AVAILABLE SERVICES:
+${catalogSummary}`;
+
+  let replyText = "";
+  try {
     const endpoint = `https://bedrock-mantle.${AWS_REGION}.api.aws/v1/chat/completions`;
     const payload = {
       model: BEDROCK_MODEL,
       messages: [
-        {
-          role: "system",
-          content: `You are ScheduleAI, an intelligent service scheduling concierge in Bangalore. Keep answers concise, helpful, and natural. Reference the recommended services below when appropriate.\n\nAvailable Recommendations:\n${catalogSummary}`,
-        },
-        ...history.slice(-4),
+        { role: "system", content: systemPrompt },
+        ...history.slice(-6),
         { role: "user", content: message },
       ],
-      temperature: 0.3,
+      temperature: 0.65,
     };
 
     const bedrockRes = await fetch(endpoint, {
@@ -196,11 +207,59 @@ async function runDirectBedrockChat(message: string, history: Array<{ role: stri
     console.warn("[chat API] Bedrock direct note:", llmErr);
   }
 
+  let selectedServices: typeof formattedCatalog = [];
+
+  // Parse [RECOMMEND: id1, id2] from LLM response
+  if (replyText) {
+    const recMatch = replyText.match(/\[RECOMMEND:\s*([^\]]+)\]/i);
+    if (recMatch) {
+      const rawIds = recMatch[1].split(",").map((id) => id.trim().toLowerCase());
+      selectedServices = formattedCatalog.filter((s) =>
+        rawIds.some(
+          (id) =>
+            s.service_id.toLowerCase() === id ||
+            s.service_name.toLowerCase().includes(id) ||
+            id.includes(s.service_id.toLowerCase())
+        )
+      );
+      // Remove tag from user-visible reply
+      replyText = replyText.replace(/\[RECOMMEND:\s*[^\]]+\]/gi, "").trim();
+    }
+  }
+
+  // Safety net: If user explicitly intended to book or find a specific service, but LLM missed the tag
+  const explicitBookingIntent =
+    /\b(book|booking|schedule|appointment|reserve|open slot|free slot)\b/i.test(message) ||
+    (/\b(haircut|dentist|dental|teeth|massage|spa|facial|trainer|gym|workout)\b/i.test(message) &&
+      /\b(need|want|find|looking for|recommend|where can i|place for|best)\b/i.test(message));
+
+  if (selectedServices.length === 0 && explicitBookingIntent) {
+    const lowerMsg = message.toLowerCase();
+    const matched = formattedCatalog.filter((s) => {
+      const nameMatch = s.service_name.toLowerCase().includes(lowerMsg);
+      const catMatch = s.category && lowerMsg.includes(s.category.toLowerCase());
+      const descMatch = s.description && s.description.toLowerCase().includes(lowerMsg);
+      return nameMatch || catMatch || descMatch;
+    });
+    if (matched.length > 0) {
+      selectedServices = matched.slice(0, 3);
+    }
+  }
+
+  // Friendly conversational fallback if LLM response failed
+  if (!replyText) {
+    if (selectedServices.length > 0) {
+      replyText = "Here are the top-rated spots matching your request! Take a look below and pick any slot that fits your schedule:";
+    } else {
+      replyText = "Hey there! I'm here and ready to chat, give advice, or help you lock in a verified booking. What's on your mind today?";
+    }
+  }
+
   return {
     reply: replyText,
-    services: formattedServices,
+    services: selectedServices,
     needs_clarification: false,
-    intent: { category: formattedServices[0]?.category || null },
+    intent: { category: selectedServices[0]?.category || null },
   };
 }
 

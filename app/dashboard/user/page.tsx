@@ -14,38 +14,62 @@ import { AISchedulerView } from "@/components/dashboard/user/views/ai-scheduler-
 import { LiveVoiceCallModal } from "@/components/dashboard/user/live-voice-call-modal"
 
 function renderRichText(content: string) {
-  const parts: React.ReactNode[] = []
-  const regex = /(\*\*[^*]+\*\*|\[([^\]]+)\]\(([^)]+)\))/g
-  let last = 0
-  let match: RegExpExecArray | null
-  let key = 0
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > last) {
-      parts.push(content.slice(last, match.index))
+  const lines = content.split("\n")
+  return lines.map((line, lineIdx) => {
+    const parts: React.ReactNode[] = []
+    const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|\[([^\]]+)\]\(([^)]+)\))/g
+    let last = 0
+    let match: RegExpExecArray | null
+    let key = 0
+    while ((match = regex.exec(line)) !== null) {
+      if (match.index > last) {
+        parts.push(line.slice(last, match.index))
+      }
+      if (match[0].startsWith("**")) {
+        parts.push(
+          <strong key={key++} className="font-bold text-stone-950 dark:text-white">
+            {match[0].slice(2, -2)}
+          </strong>
+        )
+      } else if (match[0].startsWith("*")) {
+        parts.push(
+          <em key={key++} className="italic text-stone-800 dark:text-stone-200">
+            {match[0].slice(1, -1)}
+          </em>
+        )
+      } else {
+        parts.push(
+          <a
+            key={key++}
+            href={match[3]}
+            className="text-[#b02f00] dark:text-orange-400 underline underline-offset-2 font-semibold"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {match[2]}
+          </a>
+        )
+      }
+      last = match.index + match[0].length
     }
-    if (match[0].startsWith("**")) {
-      parts.push(
-        <strong key={key++} className="font-bold text-stone-950 dark:text-white">
-          {match[0].slice(2, -2)}
-        </strong>
-      )
-    } else {
-      parts.push(
-        <a
-          key={key++}
-          href={match[3]}
-          className="text-[#b02f00] dark:text-orange-400 underline underline-offset-2 font-semibold"
-          target="_blank"
-          rel="noreferrer"
-        >
-          {match[2]}
-        </a>
-      )
-    }
-    last = match.index + match[0].length
-  }
-  if (last < content.length) parts.push(content.slice(last))
-  return parts.length ? parts : content
+    if (last < line.length) parts.push(line.slice(last))
+
+    const isBullet = line.trim().startsWith("- ") || line.trim().startsWith("• ")
+    return (
+      <span key={lineIdx} className={lineIdx > 0 ? "block mt-1.5" : "block"}>
+        {isBullet ? (
+          <span className="flex items-start gap-1.5">
+            <span className="text-[#b02f00] dark:text-orange-400 font-bold shrink-0">•</span>
+            <span>{parts.length ? parts : line.replace(/^[-•]\s*/, "")}</span>
+          </span>
+        ) : parts.length ? (
+          parts
+        ) : (
+          line || <br />
+        )}
+      </span>
+    )
+  })
 }
 
 export default function AISchedulePage() {
@@ -72,7 +96,7 @@ export default function AISchedulePage() {
   const defaultWelcome: Message = {
     id: "welcome-1",
     content:
-      "Hello! I'm your AI booking assistant. Tell me what you need — or tap the mic — and I'll find verified slots.",
+      "Hey there! 👋 I'm your ScheduleAI companion. Think of me as that one friend who knows everything — from wellness & grooming tips, to the best haircut or spa in town, or just chatting about your day. What's on your mind today?",
     sender: "ai",
     timestamp: new Date(),
     type: "general",

@@ -282,12 +282,18 @@ def node_goal_framer(state: AgentState) -> AgentState:
 
     if not intent.get("is_complete", False):
         missing = intent.get("missing_fields", ["service type"])
+        msg = (state.get("user_message") or "").strip().lower()
+        is_greeting = any(g in msg for g in ["hello", "hi", "hey", "good morning", "good evening", "how are you", "what's up", "sup"])
+        if is_greeting or len(msg.split()) <= 2:
+            return {
+                **state,
+                "goal_frame": None,
+                "needs_clarification": True,
+                "clarification_question": "Hey! So good to hear from you! How's your day going? What's on your mind today?",
+            }
         q = (
-            "I'd love to help! What kind of service are you looking for? "
-            "(e.g., haircut, dental checkup, massage, fitness training)"
+            "I'd love to help! Tell me what you're thinking — or if you're looking for a fresh haircut, relaxing massage, dental checkup, or workout, I can recommend the top-rated spots in town!"
         )
-        if "date" in missing:
-            q = "What service do you need, and when would you like to book it?"
         return {
             **state,
             "goal_frame": None,
