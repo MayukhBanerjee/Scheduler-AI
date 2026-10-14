@@ -149,6 +149,14 @@ export default function AISchedulePage() {
               services: m.services,
             }))
           )
+        } else if (!data.conversation_id || (Array.isArray(data.messages) && data.messages.length === 0)) {
+          // Authoritative DB is empty/cleared — clear local cache and show welcome message
+          setMessages([defaultWelcome])
+          try {
+            localStorage.removeItem(CHAT_STORAGE_KEY)
+          } catch {
+            /* ignore */
+          }
         }
       } catch (err) {
         console.warn("[chat] Could not load DB history:", err)
@@ -446,32 +454,31 @@ export default function AISchedulePage() {
   }
 
   // 9. Handle New Conversation (Clear chat & start fresh thread)
-  const handleNewConversation = useCallback(() => {
+  const handleNewConversation = useCallback(async () => {
     const newConvId = `conv-${Date.now()}`
     setConversationId(newConvId)
     setMessages([defaultWelcome])
     setInputMessage("")
+
+    // 1. Clear LocalStorage immediately
     try {
-      localStorage.setItem(
-        CHAT_STORAGE_KEY,
-        JSON.stringify({
-          conversationId: newConvId,
-          messages: [
-            {
-              ...defaultWelcome,
-              timestamp: defaultWelcome.timestamp.toISOString(),
-            },
-          ],
-        })
-      )
+      localStorage.removeItem(CHAT_STORAGE_KEY)
     } catch {
       /* ignore */
     }
+
+    // 2. Erase active chat session and messages from Supabase PostgreSQL
+    try {
+      await fetch("/api/chat", { method: "DELETE" })
+    } catch (err) {
+      console.warn("[chat] Failed to delete session on server:", err)
+    }
+
     toast({
-      title: "New Conversation Started",
-      description: "Previous chat cleared. You are in a fresh thread!",
+      title: "Conversation Cleared",
+      description: "Previous chat cleared from database and storage. Started fresh!",
     })
-  }, [toast])
+  }, [defaultWelcome, toast])
 
   return (
     <>
