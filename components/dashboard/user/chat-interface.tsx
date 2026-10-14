@@ -8,12 +8,12 @@ import { Message, ServiceResult } from "./types"
 import { ServiceCard } from "./service-card"
 
 const QUICK_PROMPTS = [
-  { label: "👋 How's your day?", text: "Hey! How's your day going?" },
-  { label: "💆 Help me unwind", text: "I had such a stressful week, help me unwind." },
-  { label: "💇 Haircut in Indiranagar", text: "Can you recommend the best place for a haircut in Indiranagar?" },
-  { label: "✨ Balayage vs Highlights", text: "What's the difference between balayage and highlights?" },
-  { label: "🦷 Dental Cleaning advice", text: "How often should I actually get my teeth cleaned?" },
-  { label: "☕ Work cafes in Bangalore", text: "What are some of the best quiet work cafes in Bangalore?" },
+  { label: "How's your day?", text: "Hey! How is your day going?" },
+  { label: "Help me unwind", text: "I had such a stressful week, help me unwind." },
+  { label: "Haircut in Indiranagar", text: "Can you recommend the best place for a haircut in Indiranagar?" },
+  { label: "Balayage vs Highlights", text: "What is the difference between balayage and highlights?" },
+  { label: "Dental Cleaning advice", text: "How often should I actually get my teeth cleaned?" },
+  { label: "Work cafes in Bangalore", text: "What are some of the best quiet work cafes in Bangalore?" },
 ]
 
 // ─── Props ────────────────────────────────────────────────────────────────────

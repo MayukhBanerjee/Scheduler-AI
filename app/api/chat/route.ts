@@ -11,6 +11,16 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const AWS_REGION = process.env.AWS_REGION || "ap-south-1";
 const BEDROCK_MODEL = process.env.BEDROCK_MODEL_ID || "google.gemma-3-12b-it";
 
+// Helper to guarantee 100% emoji-free output across all LLMs and fallbacks
+function stripEmojis(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/\p{Extended_Pictographic}/gu, "")
+    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\u{FE00}-\u{FE0F}\u{200D}]/gu, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
 // ── GET: Fetch active conversation & messages from Supabase PostgreSQL ────────
 export async function GET(req: Request) {
   try {
@@ -170,6 +180,10 @@ Your Tone & Guidelines:
      At the VERY END of your message, on its own new line, add:
      [RECOMMEND: service_id_1, service_id_2] (using the exact IDs from the catalog below).
 4. If no service is directly requested or relevant, NEVER include [RECOMMEND:...].
+5. STRICT ZERO-EMOJI RULE:
+   - NEVER generate or include ANY emojis or pictographs in your output under any circumstances.
+   - Do NOT use smileys, hearts, hands, sparkles, tea cups, or any emoji characters.
+   - Express all warmth, wit, empathy, and excitement purely through words and standard punctuation.
 
 CATALOG OF VERIFIED AVAILABLE SERVICES:
 ${catalogSummary}`;
@@ -256,7 +270,7 @@ ${catalogSummary}`;
   }
 
   return {
-    reply: replyText,
+    reply: stripEmojis(replyText),
     services: selectedServices,
     needs_clarification: false,
     intent: { category: selectedServices[0]?.category || null },
@@ -382,6 +396,10 @@ export async function POST(req: Request) {
     // 4. Run direct Bedrock Mantle agent if backend was not successful
     if (!backendSuccess || !data) {
       data = await runDirectBedrockChat(message.trim(), historyArray);
+    }
+
+    if (data?.reply) {
+      data.reply = stripEmojis(data.reply);
     }
 
     // 5. Persist AI Assistant Response to ai_chat_messages in PostgreSQL

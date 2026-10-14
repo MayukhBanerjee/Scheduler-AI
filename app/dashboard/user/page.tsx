@@ -96,7 +96,7 @@ export default function AISchedulePage() {
   const defaultWelcome: Message = {
     id: "welcome-1",
     content:
-      "Hey there! 👋 I'm your ScheduleAI companion. Think of me as that one friend who knows everything — from wellness & grooming tips, to the best haircut or spa in town, or just chatting about your day. What's on your mind today?",
+      "Hey there! I'm your ScheduleAI companion. Think of me as that one friend who knows everything — from wellness and grooming tips, to the best haircut or spa in town, or just chatting about your day. What's on your mind today?",
     sender: "ai",
     timestamp: new Date(),
     type: "general",

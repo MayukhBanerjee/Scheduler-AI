@@ -52,6 +52,31 @@ def _extract_text(content: Any) -> str:
     return str(content)
 
 
+def strip_emojis(text: Any) -> str:
+    """Strip all emojis and pictographs to guarantee 100% emoji-free output."""
+    if not text:
+        return ""
+    text_str = str(text)
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map symbols
+        "\U0001F1E0-\U0001F1FF"  # flags
+        "\U00002702-\U000027B0"
+        "\U000024C2-\U0001F251"
+        "\U0001F900-\U0001F9FF"  # supplemental symbols and pictographs
+        "\U0001FA70-\U0001FAFF"  # symbols and pictographs extended-a
+        "\U00002600-\U000026FF"  # misc symbols
+        "\U0000FE00-\U0000FE0F"  # variation selectors
+        "\U0000200D"              # zero-width joiner
+        "]+",
+        flags=re.UNICODE,
+    )
+    cleaned = emoji_pattern.sub("", text_str)
+    return re.sub(r"[ \t]{2,}", " ", cleaned).strip()
+
+
 def invoke_bedrock(messages: list) -> str:
     """Invoke Amazon Bedrock Mantle / Studio API using OpenAI-compatible schema."""
     api_key = os.getenv("BEDROCK_API_KEY") or os.getenv("AWS_BEARER_TOKEN_BEDROCK")
@@ -452,6 +477,7 @@ Your task:
 2. List up to 3-5 options with key info (provider name, price, available time slots)
 3. Ask the user which one they'd like to book
 4. Be warm and concise
+5. STRICT RULE: Absolutely NO emojis under any circumstances. Keep output 100% emoji-free.
 
 If no results found, apologize and suggest trying different keywords or another day.
 
@@ -462,6 +488,7 @@ CLARIFICATION_RESPONSE = """You are a friendly AI booking assistant.
 The user said: "{user_message}"
 Their message is missing key information: {missing}.
 Ask a single, clear follow-up question to get what you need. Be warm and brief.
+STRICT RULE: Absolutely NO emojis under any circumstances. Keep output 100% emoji-free.
 """
 
 
@@ -577,10 +604,13 @@ async def run_booking_agent(
 
     final_state = await agent_graph.ainvoke(initial_state)
 
+    raw_reply = final_state.get("response", "I'm not sure how to help with that. Could you rephrase?")
+    cq = final_state.get("clarification_question")
+
     return {
-        "reply": final_state.get("response", "I'm not sure how to help with that. Could you rephrase?"),
+        "reply": strip_emojis(raw_reply),
         "services": final_state.get("ranked_results") or [],
         "needs_clarification": final_state.get("needs_clarification", False),
-        "clarification_question": final_state.get("clarification_question"),
+        "clarification_question": strip_emojis(cq) if cq else None,
         "intent": final_state.get("intent"),
     }
